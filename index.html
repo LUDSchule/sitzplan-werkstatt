@@ -157,6 +157,20 @@ main{display:grid; grid-template-columns:minmax(0,1fr) 380px; align-items:start}
 .seat.over{background:var(--good-soft); box-shadow:inset 0 0 0 2px var(--good)}
 .seat.flag-bad{box-shadow:inset 0 0 0 2px var(--bad)}
 .seat.fixed{font-weight:600; color:var(--navy)}
+.mode-plan .seat.wok{background:var(--good-soft)}
+.mode-plan .seat.wno{background:var(--warn-soft)}
+.wsum{font-size:13px; margin:0 0 10px; padding:8px 10px; border-radius:var(--r); background:var(--sunk)}
+.wsum b{font-family:"IBM Plex Mono",monospace}
+.wrow{border-left:3px solid var(--line-2); padding:5px 0 6px 9px; margin-bottom:6px; font-size:12.5px}
+.wrow.no{border-left-color:var(--warn)}
+.wrow.ok{border-left-color:var(--good)}
+.wrow .wn{font-weight:600}
+.wrow .wn span{font-weight:400; color:var(--ink-3); margin-left:6px; font-size:11px}
+.wrow .wd{color:var(--ink-2)}
+.wrow .hit{color:var(--good); font-weight:600}
+.wrow .far{color:var(--ink-3)}
+.legend{display:flex; gap:12px; flex-wrap:wrap; font-size:11.5px; color:var(--ink-3); margin:0 0 8px}
+.legend i{display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:-2px; margin-right:4px; border:1px solid var(--line-2)}
 .seat.fixed::before{content:""; flex:none; width:6px; height:6px; border-radius:50%; background:var(--navy); margin-right:4px}
 
 .hint{max-width:760px; margin:10px auto 0; font-size:12px; color:var(--ink-3); display:flex; gap:14px; flex-wrap:wrap; justify-content:center; text-align:center}
@@ -354,6 +368,11 @@ Mädchen: Anna, Carla"></textarea>
       <p class="note">Die Werkstatt rechnet mehrere Sitzordnungen durch und bewertet sie nach Vorgaben, Wünschen und Bedürfnissen. Ruhe, Nähe zur Tafel und Blickfeld ergeben sich aus der Lage von Tür, Waschbecken, Tafel und Pult im Raum.</p>
       <div class="row"><button class="btn primary" id="btnAuto2">5 Vorschläge erzeugen</button></div>
       <div id="props" style="margin-top:12px"></div>
+      <div class="divider"></div>
+      <h2>Wünsche im aktuellen Sitzplan</h2>
+      <p class="note">Sitznachbarn sind der Platz am selben Tisch und direkt anstoßende Plätze an angedockten Tischen. Oben stehen die Kinder, die noch neben keinem Wunschkind sitzen.</p>
+      <div class="legend"><span><i style="background:var(--good-soft)"></i>neben einem Wunschkind</span><span><i style="background:var(--warn-soft)"></i>neben keinem Wunschkind</span></div>
+      <div id="wishlist"></div>
     </div>
 
     <!-- Raum -->
@@ -629,7 +648,25 @@ const hasRole = r => S.fixtures.some(f => (FTYPES[f.type] || {}).role === r);
 /* =====================================================================
    Bewertung und Automatik
    ===================================================================== */
-const W = {hard:-1000, gern:30, gern2:8, naehe:6, nicht:-18, ruhe:16, vorne:45, blick:30, mix:9, neu:-11, allein:-40};
+// Rangfolge: Vorgaben > Bedürfnisse (Vorne, Blick, Ruhe) > jedes Kind neben einem Wunschkind > weitere Wünsche > Nähe
+const W = {hard:-1000, need:-400, gern:100, gern2:10, naehe:6, nicht:-18, ruhe:8, vorne:12, blick:10, mix:9, neu:-11, allein:-150};
+// ab wann ein Bedürfnis als erfüllt gilt (0 = ungünstigster, 1 = günstigster Platz im Raum)
+const NEED_OK = {vorne:0.6, blick:0.6, ruhe:0.4};
+const NEED_LBL = {vorne:"Vorne", blick:"Blick", ruhe:"Ruhe"};
+const needOk = (kid, sc, f) => !kid.f[f] || !hasRole(f === "ruhe" ? "noise" : f === "vorne" ? "front" : "teacher") || sc[f] >= NEED_OK[f];
+function needStats(as){
+  const st = {};
+  for (const k in as){
+    const kid = kidById(as[k]), sc = SC[k]; if (!kid || !sc) continue;
+    for (const f of ["vorne", "blick", "ruhe"]){
+      if (!kid.f[f]) continue;
+      const s = st[f] = st[f] || {ok:0, total:0, missing:[]};
+      s.total++;
+      if (needOk(kid, sc, f)) s.ok++; else s.missing.push(kid.name);
+    }
+  }
+  return st;
+}
 const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
 const kidById = id => S.students.find(s => s.id === id);
 
@@ -754,9 +791,11 @@ function score(as){
       }
     }
     const sc = SC[k]; if (!sc) continue;
-    if (kid.f.ruhe)  sum += W.ruhe  * sc.ruhe;
-    if (kid.f.vorne) sum += W.vorne * sc.vorne;
-    if (kid.f.blick) sum += W.blick * sc.blick;
+    for (const f of ["vorne", "blick", "ruhe"]){
+      if (!kid.f[f]) continue;
+      if (!needOk(kid, sc, f)) sum += W.need;
+      sum += W[f] * sc[f];
+    }
   }
   if (S.mix === "geschlecht"){
     for (const t of S.tables){
@@ -801,13 +840,15 @@ function violations(as){
   if (alone.length) out.push({lvl:"warn", txt:`Allein am Tisch: ${alone.join(", ")}`});
   const ws = wishStats(as);
   if (ws.missing.length) out.push({lvl:"warn", txt:`Ohne Wunschkind direkt daneben: ${ws.missing.join(", ")}`});
-  const noise = hasRole("noise"), front = hasRole("front");
-  for (const k in as){
-    const kid = kidById(as[k]), sc = SC[k]; if (!kid || !sc) continue;
-    if (noise && kid.f.ruhe  && sc.ruhe  < 0.34) out.push({lvl:"warn", txt:`${kid.name} braucht Ruhe, sitzt aber nah an Tür oder Waschbecken`});
-    if (front && kid.f.vorne && sc.vorne < 0.34) out.push({lvl:"warn", txt:`${kid.name} sitzt weit hinten`});
+  const ns = needStats(as);
+  const why = {vorne:"sitzt nicht vorne", blick:"sitzt nicht im Blickfeld am Pult", ruhe:"sitzt nah an Tür oder Waschbecken"};
+  for (const f in ns) for (const n of ns[f].missing) out.push({lvl:"bad", txt:`${n} ${why[f]} — Bedürfnis ${NEED_LBL[f]} nicht erfüllt`});
+  for (const f of ["vorne", "blick", "ruhe"]){
+    const role = f === "ruhe" ? "noise" : f === "vorne" ? "front" : "teacher";
+    if (S.students.some(s => s.f[f]) && !hasRole(role)) out.push({lvl:"warn", txt:`${NEED_LBL[f]} lässt sich nicht prüfen — im Raum fehlt ${f === "ruhe" ? "Tür oder Waschbecken" : f === "vorne" ? "Tafel oder Smartboard" : "das Pult"}`});
   }
-  return out;
+  // Vorgaben zuerst, dann Bedürfnisse, dann Hinweise
+  return out.sort((a, b) => (a.lvl === "bad" ? 0 : 1) - (b.lvl === "bad" ? 0 : 1));
 }
 /* Feste Plätze: kid.fix = "Tisch:Index" */
 const seatExists = key => !!key && S.tables.some(t => t.id === tableOfSeat(key));
@@ -817,6 +858,9 @@ function fixedSeats(){ const m = new Map(); for (const k of S.students) if (vali
 
 function hardSet(){ const m = new Map(); for (const r of S.rules) if (r.t === "hard") m.set(pairKey(r.a, r.b), true); return m; }
 function shuffle(a){ for (let i = a.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
+// passt der Platz zu den Bedürfnissen des Kindes?
+const fits = (id, k) => { const kid = kidById(id), sc = SC[k]; return !kid || !sc || ["vorne", "blick", "ruhe"].every(f => needOk(kid, sc, f)); };
+const needRank = id => { const f = (kidById(id) || {}).f || {}; return f.vorne || f.blick ? 0 : f.ruhe ? 1 : 2; };
 function build(seats, kids, hs, fx){
   const as = {}, placed = new Set();
   for (const [k, id] of fx){ as[k] = id; placed.add(id); }
@@ -830,47 +874,104 @@ function build(seats, kids, hs, fx){
       if (as[p] == null && seats.some(s => s.key === p)){ as[p] = other; placed.add(other); }
       continue;
     }
-    const t = shuffle(S.tables.slice()).find(t => as[t.id + ":0"] == null && as[t.id + ":1"] == null);
+    const free2 = shuffle(S.tables.slice()).filter(t => as[t.id + ":0"] == null && as[t.id + ":1"] == null);
+    const t = free2.find(t => fits(r.a, t.id + ":0") && fits(r.b, t.id + ":1")) || free2[0];
     if (!t) continue;
     as[t.id + ":0"] = r.a; as[t.id + ":1"] = r.b; placed.add(r.a); placed.add(r.b);
   }
   // übrige Kinder tischweise auffüllen, damit niemand unnötig allein sitzt
   const order = shuffle(S.tables.slice()).flatMap(t => [t.id + ":0", t.id + ":1"]);
-  for (const kid of shuffle(kids.filter(k => !placed.has(k)))){
+  const rest = shuffle(kids.filter(k => !placed.has(k))).sort((a, b) => needRank(a) - needRank(b));
+  for (const kid of rest){
     const ok = k => as[k] == null && !(as[partnerSeat(k)] != null && hs.has(pairKey(kid, as[partnerSeat(k)])));
-    const put = order.find(k => ok(k) && as[partnerSeat(k)] != null) || order.find(ok) || order.find(k => as[k] == null);
+    const put = order.find(k => ok(k) && fits(kid, k) && as[partnerSeat(k)] != null) || order.find(k => ok(k) && fits(kid, k))
+      || order.find(k => ok(k) && as[partnerSeat(k)] != null) || order.find(ok) || order.find(k => as[k] == null);
     if (put != null) as[put] = kid;
   }
   return as;
 }
-function climb(as, seats, iter, fx){
-  let best = score(as), cur = {...as};
+// Simuliertes Abkühlen: nimmt anfangs auch Verschlechterungen an, um nicht in der erstbesten Lösung hängenzubleiben
+const pick = arr => arr[(Math.random() * arr.length) | 0];
+// gezielter Zug: ein Kind ohne Wunschkind neben eines seiner Wunschkinder setzen,
+// oder ein Kind mit offenem Bedürfnis auf einen passenden Platz
+function targetedSwap(cur, keySet, needSeats){
+  const pos = seatMap(cur);
+  const unhappy = [];
+  for (const [id, k] of pos){
+    if (!keySet.has(k)) continue;
+    const kid = kidById(id), w = WISH.get(id), sc = SC[k];
+    if (w && !seatNeighbours(cur, k).some(x => w.has(x))) unhappy.push({id, k, kind:"wish"});
+    if (kid && sc) for (const f of ["vorne", "blick", "ruhe"]) if (kid.f[f] && !needOk(kid, sc, f)) unhappy.push({id, k, kind:f});
+  }
+  if (!unhappy.length) return null;
+  const u = pick(unhappy);
+  let cands;
+  if (u.kind === "wish"){
+    const ws = pos.get(pick([...WISH.get(u.id)]));
+    if (!ws) return null;
+    cands = [partnerSeat(ws), ...(DOCK[ws] || [])];
+  } else cands = needSeats[u.kind];
+  cands = (cands || []).filter(c => c !== u.k && keySet.has(c));
+  return cands.length ? [u.k, pick(cands)] : null;
+}
+function swapped(cur, a, b){
+  const t = {...cur}, x = t[a], y = t[b];
+  if (y == null) delete t[a]; else t[a] = y;
+  if (x == null) delete t[b]; else t[b] = x;
+  return t;
+}
+// zum Schluss: alle Tauschpaare durchprobieren, bis sich nichts mehr verbessert
+function polish(cur, keys){
+  let sc = score(cur), better = true, rounds = 0;
+  while (better && rounds++ < 20){
+    better = false;
+    for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++){
+      if (cur[keys[i]] == null && cur[keys[j]] == null) continue;
+      const t = swapped(cur, keys[i], keys[j]), s2 = score(t);
+      if (s2 > sc){ cur = t; sc = s2; better = true; }
+    }
+  }
+  return {as:cur, sc};
+}
+function anneal(as, seats, iter, fx){
+  let cur = {...as}, curSc = score(cur), best = cur, bestSc = curSc;
   const keys = seats.map(s => s.key).filter(k => !fx.has(k));
-  if (keys.length < 2) return {as:cur, sc:best};
+  if (keys.length < 2) return {as:best, sc:bestSc};
+  const keySet = new Set(keys);
+  const needSeats = {};
+  for (const f of ["vorne", "blick", "ruhe"]) needSeats[f] = keys.filter(k => SC[k] && SC[k][f] >= NEED_OK[f]);
+  const T0 = 120, T1 = 0.3;
   for (let n = 0; n < iter; n++){
-    const a = keys[(Math.random() * keys.length) | 0], b = keys[(Math.random() * keys.length) | 0];
+    let a, b;
+    if (Math.random() < 0.4){ const m = targetedSwap(cur, keySet, needSeats); if (m) [a, b] = m; }
+    if (a == null){ a = keys[(Math.random() * keys.length) | 0]; b = keys[(Math.random() * keys.length) | 0]; }
     if (a === b) continue;
     const t = {...cur}, x = t[a], y = t[b];
     if (x == null && y == null) continue;
     if (y == null) delete t[a]; else t[a] = y;
     if (x == null) delete t[b]; else t[b] = x;
     const sc = score(t);
-    if (sc >= best){ best = sc; cur = t; }      // Gleichstand annehmen: hilft über Plateaus
+    const temp = T0 * Math.pow(T1 / T0, n / iter);
+    if (sc >= curSc || Math.random() < Math.exp((sc - curSc) / temp)){
+      cur = t; curSc = sc;
+      if (sc > bestSc){ best = t; bestSc = sc; }
+    }
   }
-  return {as:cur, sc:best};
+  return polish(best, keys);
 }
 function generate(n){
   prepare();
   const seats = allSeats(), kids = S.students.map(s => s.id), hs = hardSet(), fx = fixedSeats();
   if (!kids.length || !seats.length) return [];
-  const res = [];
-  for (let i = 0; i < n * 4 && res.length < n; i++){
-    const r = climb(build(seats, kids, hs, fx), seats, 7000, fx);
+  // so viele Durchgänge wie in rund sieben Sekunden möglich, die besten verschiedenen behalten
+  const res = [], t0 = performance.now();
+  for (let i = 0; i < 80 && (i < n || performance.now() - t0 < 7000); i++){
+    const r = anneal(build(seats, kids, hs, fx), seats, 20000, fx);
     const sig = Object.entries(r.as).sort().map(e => e.join("")).join(",");
     if (res.some(x => x.sig === sig)) continue;
-    res.push({...r, sig, v:violations(r.as), ws:wishStats(r.as)});
+    res.push({...r, sig, v:violations(r.as), ws:wishStats(r.as), ns:needStats(r.as)});
   }
-  return res.sort((a, b) => b.sc - a.sc);
+  return res.sort((a, b) => b.sc - a.sc).slice(0, n);
 }
 
 
@@ -928,7 +1029,12 @@ function drawRoom(){
       const sd = document.createElement("div");
       sd.className = "seat"; sd.dataset.seat = s.key;
       const kid = kidById(S.assign[s.key]);
-      if (kid){ sd.textContent = kid.name; if (kid.fix === s.key) sd.classList.add("fixed"); }
+      if (kid){
+        sd.textContent = kid.name;
+        if (kid.fix === s.key) sd.classList.add("fixed");
+        const w = WISH.get(kid.id);
+        if (w) sd.classList.add(seatNeighbours(S.assign, s.key).some(x => w.has(x)) ? "wok" : "wno");
+      }
       else { sd.classList.add("empty"); sd.textContent = "·"; }
       el.appendChild(sd);
     }
@@ -990,15 +1096,20 @@ function drawProps(){
   if (!props.length){ box.innerHTML = '<div class="empty-note">Noch keine Vorschläge berechnet.</div>'; return; }
   const max = Math.max(...props.map(p => p.sc)), min = Math.min(...props.map(p => p.sc));
   box.innerHTML = props.map((p, i) => {
-    const bad = p.v.filter(v => v.lvl === "bad").length;
+    const bad = p.v.filter(v => v.lvl === "bad" && !/Bedürfnis/.test(v.txt)).length;
+    const nsTxt = Object.keys(p.ns).map(f => `${NEED_LBL[f]} ${p.ns[f].ok}/${p.ns[f].total}`).join(" · ");
+    const nsAll = Object.values(p.ns).every(s => s.ok === s.total);
     const pct = max === min ? 100 : Math.round((p.sc - min) / (max - min) * 100);
-    const list = p.v.slice(0, 6).map(v => `<li>${esc(v.txt)}</li>`).join("");
+    const list = p.v.slice(0, 8).map(v => `<li>${esc(v.txt)}</li>`).join("");
+    const allWish = p.ws.total && p.ws.ok === p.ws.total;
     return `<div class="prop${i === 0 ? " best" : ""}">
       <div class="top"><span class="score">${Math.round(p.sc)}</span><span class="lbl-u">Vorschlag ${i + 1}${i === 0 ? " · bester" : ""}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="lbl-u">${bad ? `${bad} Vorgabe verletzt · ` : "Alle Vorgaben erfüllt · "}${p.ws.total ? `${p.ws.ok} von ${p.ws.total} Kindern direkt neben einem Wunschkind${p.ws.more ? `, ${p.ws.more} davon neben mehreren` : ""}` : ""}</div>
-      <ul>${list || "<li>Alle Regeln erfüllt.</li>"}</ul>
-      <button class="btn" data-take="${i}">Übernehmen</button></div>`;
+      <div class="wsum" style="margin:6px 0">${bad ? `<span style="color:var(--bad)">✗ ${bad} Vorgabe${bad > 1 ? "n" : ""} verletzt</span>` : `<span style="color:var(--good)">✓ Alle Vorgaben erfüllt</span>`}<br>
+      ${nsTxt ? `${nsAll ? '<span style="color:var(--good)">✓</span>' : '<span style="color:var(--bad)">✗</span>'} Bedürfnisse: ${nsTxt}<br>` : ""}
+      ${p.ws.total ? `${allWish ? '<span style="color:var(--good)">✓</span>' : "·"} <b>${p.ws.ok} von ${p.ws.total}</b> Kindern neben mindestens einem Wunschkind${p.ws.more ? ` · <b>${p.ws.more}</b> neben mehreren` : ""}` : ""}</div>
+      <ul>${list || "<li>Keine offenen Punkte.</li>"}</ul>
+      <button class="btn" data-take="${i}">Übernehmen</button> <span class="note">danach unten jedes Kind im Einzelnen</span></div>`;
   }).join("");
 }
 function drawRoomPanel(){
@@ -1037,14 +1148,54 @@ function drawSel(){
   document.getElementById("selRot").onclick = rotateSel;
   document.getElementById("selDel").onclick = deleteSel;
 }
+function planHint(){
+  const ws = Object.keys(S.assign).length ? wishStats(S.assign) : null;
+  const dock = Object.keys(DOCK).length;
+  return (ws && ws.total ? `<span><b>${ws.ok} von ${ws.total}</b> Kindern neben einem Wunschkind — grün ja, gelb nein. Einzelheiten unter <b>Vorschläge</b>.</span>` : "")
+    + '<span><b>Sitzplan:</b> Namen auf einen Platz ziehen, Platz auf Platz tauscht. Rot umrandet = Vorgabe verletzt.</span>'
+    + (dock ? "" : '<span><b>Keine Tische angedockt</b> — Nachbarn sind nur die Plätze am selben Tisch. Im Modus Raum Tische aneinanderschieben.</span>');
+}
 function hint(){
   document.getElementById("hint").innerHTML = mode === "plan"
-    ? '<span><b>Sitzplan:</b> Namen aus der Liste auf einen Platz ziehen. Platz auf Platz tauscht.</span><span>Rot umrandet = eine Vorgabe ist verletzt.</span>'
+    ? planHint()
     : '<span><b>Raum:</b> Tische und Elemente ziehen. Tische docken an, wenn man sie an einen anderen heranschiebt — angedockte Tische sind blau umrandet.</span><span>Antippen wählt aus, blaue Ecke ändert die Größe, Entf löscht.</span>';
+}
+const mDist = (a, b) => (Math.hypot(a.x - b.x, a.y - b.y) / 100).toLocaleString("de-DE", {maximumFractionDigits:1});
+function drawWishes(){
+  const box = document.getElementById("wishlist");
+  const as = S.assign, pos = seatMap(as);
+  if (!Object.keys(as).length){ box.innerHTML = '<div class="empty-note">Noch keine Sitzordnung. Einen Vorschlag übernehmen oder Kinder auf Plätze ziehen.</div>'; return; }
+  const nm = id => { const s = kidById(id); return s ? esc(s.name) : "?"; };
+  const rows = S.students.map(kid => {
+    const k = pos.get(kid.id), w = WISH.get(kid.id);
+    const nbs = k ? [...new Set(seatNeighbours(as, k))] : [];
+    const hit = w ? nbs.filter(x => w.has(x)) : [];
+    return {kid, k, w, nbs, hit, rank: !w ? 2 : hit.length ? 1 : 0};
+  }).sort((a, b) => a.rank - b.rank || a.kid.name.localeCompare(b.kid.name, "de"));
+  const ws = wishStats(as);
+  const html = rows.map(r => {
+    const partner = r.k ? as[partnerSeat(r.k)] : null;
+    const nbTxt = r.nbs.length
+      ? r.nbs.map(x => nm(x) + (x === partner ? "" : " <span class=\"far\">(angedockt)</span>")).join(", ")
+      : (r.k ? "niemand" : "—");
+    let wTxt = "keine Wünsche angegeben";
+    if (r.w){
+      wTxt = [...r.w].map(x => {
+        if (r.hit.includes(x)) return `<span class="hit">✓ ${nm(x)}</span>`;
+        const a = SEATPOS[r.k], b = SEATPOS[pos.get(x)];
+        return `${nm(x)}` + (a && b ? ` <span class="far">${mDist(a, b)} m</span>` : "");
+      }).join(" · ");
+    }
+    return `<div class="wrow ${r.rank === 0 ? "no" : r.rank === 1 ? "ok" : ""}">
+      <div class="wn">${esc(r.kid.name)}<span>${r.k ? seatLabel(r.k) : "ohne Platz"}</span></div>
+      <div class="wd">Neben: ${nbTxt}</div>
+      <div class="wd">Wünsche: ${wTxt}</div></div>`;
+  }).join("");
+  box.innerHTML = (ws.total ? `<div class="wsum"><b>${ws.ok} von ${ws.total}</b> Kindern sitzen neben mindestens einem Wunschkind${ws.more ? `, <b>${ws.more}</b> neben mehreren` : ""}.</div>` : "") + html;
 }
 function redraw(){
   prepare();
-  drawRoom(); drawKids(); drawRules(); drawProps(); drawRoomPanel(); hint();
+  drawRoom(); drawKids(); drawRules(); drawProps(); drawRoomPanel(); drawWishes(); hint();
   save();
 }
 window.addEventListener("resize", () => drawRoom());
@@ -1286,10 +1437,16 @@ document.getElementById("mRaum").onclick = () => setMode("raum");
 document.getElementById("btnLeeren").onclick = () => { S.prev = [...neighbours(S.assign).keys()]; S.assign = {}; props = []; redraw(); };
 document.getElementById("btnPrint").onclick = () => { setMode("plan"); window.print(); };
 function runAuto(){
-  props = generate(5);
+  const btns = [document.getElementById("btnAuto"), document.getElementById("btnAuto2")];
   document.querySelector('[data-tab="vorschlaege"]').click();
-  drawProps();
-  if (!props.length) alert("Bitte zuerst Namen eintragen und mindestens einen Tisch aufstellen.");
+  btns.forEach(b => { b.disabled = true; b.dataset.label = b.textContent; b.textContent = "Rechnet …"; });
+  document.getElementById("props").innerHTML = '<div class="empty-note">Rechnet — das dauert ein paar Sekunden …</div>';
+  setTimeout(() => {
+    try { props = generate(5); }
+    finally { btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.label; }); }
+    drawProps();
+    if (!props.length) alert("Bitte zuerst Namen eintragen und mindestens einen Tisch aufstellen.");
+  }, 30);
 }
 document.getElementById("btnAuto").onclick = runAuto;
 document.getElementById("btnAuto2").onclick = runAuto;
