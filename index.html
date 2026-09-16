@@ -1254,6 +1254,14 @@ document.getElementById("btnRIn").onclick = () => {
   const rep = document.getElementById("rreport");
   if (!S.students.length){ rep.innerHTML = '<div class="rule nicht">Bitte zuerst die Namen der Klasse übernehmen.</div>'; return; }
   const r = parseRules(document.getElementById("rtext").value);
+  if (!r.used && r.unknown.length && isPlaceholderState()){
+    rep.innerHTML = '<div class="rule nicht">In der App stehen noch die Beispielnamen. Bitte zuerst unter <b>Kinder</b> die Namen der Klasse übernehmen und die Regeln dann erneut einlesen. Es wurde nichts verändert.</div>';
+    return;
+  }
+  if (!r.used && r.unknown.length){
+    rep.innerHTML = `<div class="rule nicht">Keiner der Namen passt zur Namensliste: ${esc(r.unknown.join(", "))}. Es wurde nichts verändert.</div>`;
+    return;
+  }
   if (!r.used && !r.unknown.length){ rep.innerHTML = '<div class="rule nicht">Im Text war keine erkennbare Regel.</div>'; return; }
   for (const s of S.students){ s.f = {}; delete s.fix; }
   S.rules = [];
