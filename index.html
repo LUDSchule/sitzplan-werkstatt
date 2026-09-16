@@ -192,7 +192,7 @@ label.lbl{font-size:12px; color:var(--ink-2)}
 
 .rule{display:flex; align-items:center; gap:8px; font-size:12.5px; padding:6px 8px; border-radius:var(--r); margin-bottom:5px}
 .rule.hard{background:var(--bad-soft)}
-.rule.muss{background:var(--blue-soft)}
+.rule.muss,.rule.nah{background:var(--blue-soft)}
 .rule.gern{background:var(--good-soft)}
 .rule.nicht{background:var(--warn-soft)}
 .rule .x{margin-left:auto; border:0; background:transparent; cursor:pointer; color:var(--ink-3); font-size:15px; line-height:1; padding:0 3px}
@@ -308,6 +308,7 @@ label.lbl{font-size:12px; color:var(--ink-2)}
         <select class="field" id="rT" style="flex:1" aria-label="Art der Regel">
           <option value="hard">Darf nicht nebeneinander — Vorgabe</option>
           <option value="muss">Muss nebeneinander — Vorgabe</option>
+          <option value="nah">Benachbarte Tische, nicht nebeneinander — Vorgabe</option>
           <option value="gern">Gern nebeneinander — Wunsch</option>
           <option value="nicht">Lieber nicht nebeneinander — Wunsch</option>
         </select>
@@ -319,7 +320,7 @@ label.lbl{font-size:12px; color:var(--ink-2)}
       <div id="rulelist"></div>
       <div class="divider"></div>
       <h2>Regeln als Text</h2>
-      <p class="note">Zum Einlesen fertiger Regeln, etwa aus ausgewerteten Wunschzetteln. Ersetzt die bestehenden Regeln und festen Plätze. <b>Nicht</b> und <b>Muss</b> sind Vorgaben, <b>Gern</b> und <b>Ungern</b> Wünsche. <b>Fest</b>: Tischnummer.Platz — Platz 1 ist links bzw. oben, Platz 2 rechts bzw. unten.</p>
+      <p class="note">Zum Einlesen fertiger Regeln, etwa aus ausgewerteten Wunschzetteln. Ersetzt die bestehenden Regeln und festen Plätze. <b>Nicht</b>, <b>Muss</b> und <b>Nah</b> (benachbarte Tische, z. B. über Eck) sind Vorgaben, <b>Gern</b> und <b>Ungern</b> Wünsche. <b>Fest</b>: Tischnummer.Platz — Platz 1 ist links bzw. oben, Platz 2 rechts bzw. unten.</p>
       <textarea class="field mono" id="rtext" style="min-height:120px; font-size:12px"
 placeholder="# Regeln
 Ruhe: Anna, Ben
@@ -627,23 +628,48 @@ const hasRole = r => S.fixtures.some(f => (FTYPES[f.type] || {}).role === r);
 /* =====================================================================
    Bewertung und Automatik
    ===================================================================== */
-const W = {hard:-1000, gern:26, nicht:-18, ruhe:16, vorne:13, blick:11, mix:9, neu:-11};
+const W = {hard:-1000, gern:30, nicht:-18, ruhe:16, vorne:45, blick:30, mix:9, neu:-11, allein:-40};
+const NEAR = 150;   // cm zwischen zwei Plätzen: gilt als Nachbartisch
 const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
 const kidById = id => S.students.find(s => s.id === id);
+let SEATPOS = {}, WISH = new Map();
+// Vor jeder Berechnung: Platzkoordinaten und Wunschlisten je Kind
+function prepare(){
+  SC = seatScores();
+  SEATPOS = {}; for (const s of allSeats()) SEATPOS[s.key] = s;
+  WISH = new Map();
+  for (const r of S.rules) if (r.t === "gern" || r.t === "muss"){
+    if (!WISH.has(r.a)) WISH.set(r.a, new Set());
+    if (!WISH.has(r.b)) WISH.set(r.b, new Set());
+    WISH.get(r.a).add(r.b); WISH.get(r.b).add(r.a);
+  }
+}
+function nearSeats(k1, k2){
+  if (!k1 || !k2 || tableOfSeat(k1) === tableOfSeat(k2)) return false;
+  const a = SEATPOS[k1], b = SEATPOS[k2];
+  return !!a && !!b && Math.hypot(a.x - b.x, a.y - b.y) <= NEAR;
+}
 function neighbours(as){
   const m = new Map();
   for (const k in as){ const p = as[partnerSeat(k)]; if (p != null) m.set(pairKey(as[k], p), true); }
   return m;
 }
+function seatMap(as){ const m = new Map(); for (const k in as) m.set(as[k], k); return m; }
 function score(as){
-  let sum = 0; const nb = neighbours(as);
+  let sum = 0; const nb = neighbours(as), pos = seatMap(as);
   for (const r of S.rules){
+    if (r.t === "gern") continue;
+    if (r.t === "nah"){ if (!nearSeats(pos.get(r.a), pos.get(r.b))) sum += W.hard; continue; }
     const on = nb.has(pairKey(r.a, r.b));
     if (r.t === "muss"){ if (!on) sum += W.hard; }
     else if (on) sum += W[r.t];
   }
   for (const k in as){
-    const kid = kidById(as[k]), sc = SC[k]; if (!kid || !sc) continue;
+    const kid = kidById(as[k]); if (!kid) continue;
+    const partner = as[partnerSeat(k)], w = WISH.get(kid.id);
+    if (partner == null) sum += W.allein;
+    else if (w && w.has(partner)) sum += W.gern;
+    const sc = SC[k]; if (!sc) continue;
     if (kid.f.ruhe)  sum += W.ruhe  * sc.ruhe;
     if (kid.f.vorne) sum += W.vorne * sc.vorne;
     if (kid.f.blick) sum += W.blick * sc.blick;
@@ -657,19 +683,36 @@ function score(as){
   if (S.mix === "neu") for (const p of S.prev) if (nb.has(p)) sum += W.neu;
   return sum;
 }
+// Wie viele Kinder mit Wünschen sitzen neben einem Wunschkind?
+function wishStats(as){
+  let ok = 0, total = 0; const missing = [];
+  const pos = seatMap(as);
+  for (const kid of S.students){
+    const w = WISH.get(kid.id); if (!w) continue;
+    total++;
+    const k = pos.get(kid.id), p = k ? as[partnerSeat(k)] : null;
+    if (p != null && w.has(p)) ok++; else missing.push(kid.name);
+  }
+  return {ok, total, missing};
+}
 function violations(as){
-  const nb = neighbours(as), out = [];
+  const nb = neighbours(as), pos = seatMap(as), out = [];
   const nm = id => { const s = kidById(id); return s ? s.name : "?"; };
   for (const r of S.rules){
     const on = nb.has(pairKey(r.a, r.b));
     if (r.t === "hard"  &&  on) out.push({lvl:"bad",  txt:`${nm(r.a)} und ${nm(r.b)} sitzen nebeneinander — Vorgabe verletzt`});
     if (r.t === "muss"  && !on) out.push({lvl:"bad",  txt:`${nm(r.a)} und ${nm(r.b)} sitzen nicht nebeneinander — Vorgabe verletzt`});
+    if (r.t === "nah"   && !nearSeats(pos.get(r.a), pos.get(r.b))) out.push({lvl:"bad", txt:`${nm(r.a)} und ${nm(r.b)} sitzen nicht an benachbarten Tischen — Vorgabe verletzt`});
     if (r.t === "nicht" &&  on) out.push({lvl:"warn", txt:`${nm(r.a)} neben ${nm(r.b)} — unerwünscht`});
-    if (r.t === "gern"  && !on) out.push({lvl:"warn", txt:`${nm(r.a)} und ${nm(r.b)} sitzen nicht zusammen`});
   }
   for (const kid of S.students){
     if (validFix(kid) && as[kid.fix] !== kid.id) out.push({lvl:"bad", txt:`${kid.name} sitzt nicht auf dem festen Platz ${seatLabel(kid.fix)}`});
   }
+  const alone = [];
+  for (const k in as) if (as[partnerSeat(k)] == null) alone.push(nm(as[k]));
+  if (alone.length) out.push({lvl:"warn", txt:`Sitzt allein: ${alone.join(", ")}`});
+  const ws = wishStats(as);
+  if (ws.missing.length) out.push({lvl:"warn", txt:`Ohne Wunschnachbarn: ${ws.missing.join(", ")}`});
   const noise = hasRole("noise"), front = hasRole("front");
   for (const k in as){
     const kid = kidById(as[k]), sc = SC[k]; if (!kid || !sc) continue;
@@ -703,10 +746,11 @@ function build(seats, kids, hs, fx){
     if (!t) continue;
     as[t.id + ":0"] = r.a; as[t.id + ":1"] = r.b; placed.add(r.a); placed.add(r.b);
   }
-  const free = shuffle(seats.map(s => s.key));
+  // übrige Kinder tischweise auffüllen, damit niemand unnötig allein sitzt
+  const order = shuffle(S.tables.slice()).flatMap(t => [t.id + ":0", t.id + ":1"]);
   for (const kid of shuffle(kids.filter(k => !placed.has(k)))){
-    let put = free.find(k => as[k] == null && !(as[partnerSeat(k)] != null && hs.has(pairKey(kid, as[partnerSeat(k)]))));
-    if (put == null) put = free.find(k => as[k] == null);
+    const ok = k => as[k] == null && !(as[partnerSeat(k)] != null && hs.has(pairKey(kid, as[partnerSeat(k)])));
+    const put = order.find(k => ok(k) && as[partnerSeat(k)] != null) || order.find(ok) || order.find(k => as[k] == null);
     if (put != null) as[put] = kid;
   }
   return as;
@@ -723,20 +767,20 @@ function climb(as, seats, iter, fx){
     if (y == null) delete t[a]; else t[a] = y;
     if (x == null) delete t[b]; else t[b] = x;
     const sc = score(t);
-    if (sc > best){ best = sc; cur = t; }
+    if (sc >= best){ best = sc; cur = t; }      // Gleichstand annehmen: hilft über Plateaus
   }
   return {as:cur, sc:best};
 }
 function generate(n){
-  SC = seatScores();
+  prepare();
   const seats = allSeats(), kids = S.students.map(s => s.id), hs = hardSet(), fx = fixedSeats();
   if (!kids.length || !seats.length) return [];
   const res = [];
-  for (let i = 0; i < n * 3 && res.length < n; i++){
-    const r = climb(build(seats, kids, hs, fx), seats, 2600, fx);
+  for (let i = 0; i < n * 4 && res.length < n; i++){
+    const r = climb(build(seats, kids, hs, fx), seats, 6000, fx);
     const sig = Object.entries(r.as).sort().map(e => e.join("")).join(",");
     if (res.some(x => x.sig === sig)) continue;
-    res.push({...r, sig, v:violations(r.as)});
+    res.push({...r, sig, v:violations(r.as), ws:wishStats(r.as)});
   }
   return res.sort((a, b) => b.sc - a.sc);
 }
@@ -812,8 +856,9 @@ function drawRoom(){
 function markBad(){
   const nb = neighbours(S.assign);
   for (const r of S.rules){
-    const on = nb.has(pairKey(r.a, r.b));
-    if (!((r.t === "hard" && on) || (r.t === "muss" && !on))) continue;
+    const on = nb.has(pairKey(r.a, r.b)), pos = seatMap(S.assign);
+    const nahBad = r.t === "nah" && pos.has(r.a) && pos.has(r.b) && !nearSeats(pos.get(r.a), pos.get(r.b));
+    if (!((r.t === "hard" && on) || (r.t === "muss" && !on) || nahBad)) continue;
     for (const k in S.assign){
       if (S.assign[k] === r.a || S.assign[k] === r.b){
         const e = room.querySelector(`[data-seat="${k}"]`); if (e) e.classList.add("flag-bad");
@@ -843,7 +888,7 @@ function drawKids(){
 function drawRules(){
   const box = document.getElementById("rulelist");
   const nm = id => { const s = kidById(id); return s ? s.name : "?"; };
-  const lbl = {hard:"darf nicht neben", muss:"muss neben", gern:"gern neben", nicht:"lieber nicht neben"};
+  const lbl = {hard:"darf nicht neben", muss:"muss neben", nah:"am Nachbartisch von", gern:"gern neben", nicht:"lieber nicht neben"};
   box.innerHTML = S.rules.length
     ? S.rules.map((r, i) => `<div class="rule ${r.t}"><span>${esc(nm(r.a))} <em>${lbl[r.t]}</em> ${esc(nm(r.b))}</span><button class="x" data-del="${i}" aria-label="Regel entfernen">×</button></div>`).join("")
     : '<div class="empty-note">Noch keine Regeln.</div>';
@@ -858,13 +903,13 @@ function drawProps(){
   if (!props.length){ box.innerHTML = '<div class="empty-note">Noch keine Vorschläge berechnet.</div>'; return; }
   const max = Math.max(...props.map(p => p.sc)), min = Math.min(...props.map(p => p.sc));
   box.innerHTML = props.map((p, i) => {
-    const bad = p.v.filter(v => v.lvl === "bad").length, warn = p.v.filter(v => v.lvl === "warn").length;
+    const bad = p.v.filter(v => v.lvl === "bad").length;
     const pct = max === min ? 100 : Math.round((p.sc - min) / (max - min) * 100);
-    const list = p.v.slice(0, 4).map(v => `<li>${esc(v.txt)}</li>`).join("");
+    const list = p.v.slice(0, 6).map(v => `<li>${esc(v.txt)}</li>`).join("");
     return `<div class="prop${i === 0 ? " best" : ""}">
       <div class="top"><span class="score">${Math.round(p.sc)}</span><span class="lbl-u">Vorschlag ${i + 1}${i === 0 ? " · bester" : ""}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="lbl-u">${bad ? `${bad} Vorgabe verletzt · ` : ""}${warn} Wünsche offen</div>
+      <div class="lbl-u">${bad ? `${bad} Vorgabe verletzt · ` : "Alle Vorgaben erfüllt · "}${p.ws.total ? `${p.ws.ok} von ${p.ws.total} Kindern neben einem Wunschkind` : ""}</div>
       <ul>${list || "<li>Alle Regeln erfüllt.</li>"}</ul>
       <button class="btn" data-take="${i}">Übernehmen</button></div>`;
   }).join("");
@@ -911,7 +956,7 @@ function hint(){
     : '<span><b>Raum:</b> Tische und Elemente ziehen. Antippen wählt aus, blaue Ecke ändert die Größe.</span><span>Entf-Taste löscht das Ausgewählte.</span>';
 }
 function redraw(){
-  SC = seatScores();
+  prepare();
   drawRoom(); drawKids(); drawRules(); drawProps(); drawRoomPanel(); hint();
   save();
 }
@@ -1210,7 +1255,7 @@ document.getElementById("mix").onchange = e => { S.mix = e.target.value; save();
 /* Regeln als Text */
 const nrm = s => String(s).trim().toLowerCase().replace(/\s+/g, " ");
 const KEYMAP = {ruhe:"ruhe", vorne:"vorne", blick:"blick", blickfeld:"blick",
-  nicht:"hard", vorgabe:"hard", muss:"muss", zusammen:"muss", gern:"gern", ungern:"nicht",
+  nicht:"hard", vorgabe:"hard", muss:"muss", zusammen:"muss", nah:"nah", ecke:"nah", nachbartisch:"nah", gern:"gern", ungern:"nicht",
   fest:"fest", platz:"fest",
   junge:"m", jungen:"m", "mädchen":"w", maedchen:"w"};
 function parseRules(txt){
@@ -1284,7 +1329,7 @@ document.getElementById("btnROut").onclick = () => {
   const L = ["# Regeln — aus der Sitzplan-Werkstatt"];
   const add = (k, v) => { if (v && v.length) L.push(`${k}: ${Array.isArray(v) ? v.join(", ") : v}`); };
   add("Ruhe", pick("ruhe")); add("Vorne", pick("vorne")); add("Blick", pick("blick"));
-  add("Nicht", pairs("hard")); add("Muss", pairs("muss"));
+  add("Nicht", pairs("hard")); add("Muss", pairs("muss")); add("Nah", pairs("nah"));
   add("Fest", S.students.filter(validFix).map(s => `${s.name} = ${s.fix.split(":")[0]}.${+s.fix.split(":")[1] + 1}`).join("; "));
   add("Gern", pairs("gern")); add("Ungern", pairs("nicht"));
   add("Junge", gen("m")); add("Mädchen", gen("w"));
