@@ -309,6 +309,7 @@ label.lbl{font-size:12px; color:var(--ink-2)}
       <div class="divider"></div>
       <h2>Kinder und ihre Bedürfnisse</h2>
       <p class="note"><b>R</b> braucht Ruhe · <b>V</b> weit vorne · <b>B</b> im Blickfeld · <b>F</b> fester Platz. Namen auf einen Platz ziehen. Für einen festen Platz das Kind erst hinsetzen, dann <b>F</b> antippen — die Automatik lässt es dann dort sitzen.</p>
+      <div id="dupnote"></div>
       <div id="kidlist"></div>
     </div>
 
@@ -909,9 +910,17 @@ function targetedSwap(cur, keySet, needSeats){
   if (u.kind === "wish"){
     const ws = pos.get(pick([...WISH.get(u.id)]));
     if (!ws) return null;
-    cands = [partnerSeat(ws), ...(DOCK[ws] || [])];
-  } else cands = needSeats[u.kind];
-  cands = (cands || []).filter(c => c !== u.k && keySet.has(c));
+    if (Math.random() < 0.5){
+      // Kind zum Wunschkind setzen
+      cands = [partnerSeat(ws), ...(DOCK[ws] || [])].filter(c => c !== u.k && keySet.has(c));
+      return cands.length ? [u.k, pick(cands)] : null;
+    }
+    // Wunschkind zum Kind holen
+    if (!keySet.has(ws)) return null;
+    cands = [partnerSeat(u.k), ...(DOCK[u.k] || [])].filter(c => c !== ws && keySet.has(c));
+    return cands.length ? [ws, pick(cands)] : null;
+  }
+  cands = (needSeats[u.kind] || []).filter(c => c !== u.k && keySet.has(c));
   return cands.length ? [u.k, pick(cands)] : null;
 }
 function swapped(cur, a, b){
@@ -1059,7 +1068,36 @@ function markBad(){
     }
   }
 }
+// doppelte Namen: behalten wird der Eintrag mit den meisten Regeln, Bedürfnissen und festem Platz
+function duplicateGroups(){
+  const g = new Map();
+  for (const s of S.students){ const k = nrm(s.name); if (!g.has(k)) g.set(k, []); g.get(k).push(s); }
+  return [...g.values()].filter(x => x.length > 1);
+}
+function weightOf(s){
+  return S.rules.filter(r => r.a === s.id || r.b === s.id).length * 2 + Object.keys(s.f || {}).length + (s.fix ? 1 : 0);
+}
+function removeDuplicates(){
+  const drop = new Set();
+  for (const grp of duplicateGroups()){
+    const keep = grp.slice().sort((a, b) => weightOf(b) - weightOf(a) || b.id - a.id)[0];
+    for (const s of grp) if (s !== keep) drop.add(s.id);
+  }
+  S.students = S.students.filter(s => !drop.has(s.id));
+  S.rules = S.rules.filter(r => !drop.has(r.a) && !drop.has(r.b));
+  for (const k of Object.keys(S.assign)) if (drop.has(S.assign[k])) delete S.assign[k];
+  props = []; redraw();
+}
+function drawDupNote(){
+  const box = document.getElementById("dupnote"), d = duplicateGroups();
+  box.innerHTML = d.length
+    ? `<div class="rule hard" style="display:block">Doppelte Namen: ${esc(d.map(x => `${x[0].name} (${x.length}×)`).join(", "))}. Falls das keine verschiedenen Kinder sind, bitte aufräumen — sonst verteilt die Automatik Kopien ohne Wünsche.<div style="margin-top:6px"><button class="btn" id="btnDup">Doppelte entfernen</button></div></div>`
+    : "";
+  const b = document.getElementById("btnDup");
+  if (b) b.onclick = () => { if (confirm("Doppelte Einträge entfernen? Behalten wird jeweils der Eintrag mit Regeln und Bedürfnissen.")) removeDuplicates(); };
+}
 function drawKids(){
+  drawDupNote();
   const box = document.getElementById("kidlist");
   document.getElementById("cnt").textContent = `${S.students.length} Kinder · ${allSeats().length} Plätze`;
   if (!S.students.length){ box.innerHTML = '<div class="empty-note">Noch keine Namen. Liste oben einfügen.</div>'; return; }
@@ -1459,8 +1497,14 @@ document.getElementById("btnNamen").onclick = () => {
   const lines = document.getElementById("paste").value.split(/[\n,;\t]/).map(s => s.trim()).filter(Boolean);
   if (!lines.length) return;
   if (S.students.length && S.students.every(s => /^Beispiel /.test(s.name))){ S.students = []; S.assign = {}; S.rules = []; props = []; }
-  for (const n of lines) S.students.push({id:S.nextSid++, name:n, f:{}, g:"-"});
+  const have = new Set(S.students.map(s => nrm(s.name))), skipped = [];
+  for (const n of lines){
+    if (have.has(nrm(n))){ skipped.push(n); continue; }
+    have.add(nrm(n));
+    S.students.push({id:S.nextSid++, name:n, f:{}, g:"-"});
+  }
   document.getElementById("paste").value = ""; redraw();
+  if (skipped.length) alert(`Schon in der Liste, daher nicht noch einmal übernommen: ${skipped.join(", ")}`);
 };
 document.getElementById("btnDemo").onclick = () => {
   if (S.students.length && !S.students.every(s => /^Beispiel /.test(s.name)) &&
