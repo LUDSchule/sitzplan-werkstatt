@@ -52,6 +52,8 @@ Ruhe: Anna, Ben, Carla
 Vorne: David
 Blick: Emil
 Nicht: Ben | Finn
+Muss: David | Emil
+Fest: Anna = 12.1
 Gern: Carla | Gül; Hana | Ida
 Ungern: Jonah | Kemal
 Junge: Ben, Finn
@@ -59,7 +61,9 @@ Mädchen: Carla, Hana
 ```
 
 - **Ruhe / Vorne / Blick** — Bedürfnisse
-- **Nicht** — Vorgabe der Lehrkraft, wird nie gebrochen
+- **Nicht** — Vorgabe der Lehrkraft: dürfen nicht am selben Tisch sitzen
+- **Muss** — Vorgabe der Lehrkraft: sitzen immer am selben Tisch
+- **Fest** — fester Platz als `Name = Tisch.Platz`; Platz 1 ist links bzw. oben, Platz 2 rechts bzw. unten. Alternativ im Sitzplan das Kind hinsetzen und in der Kinderliste **F** antippen
 - **Gern / Ungern** — Wünsche der Kinder, fließen in die Bewertung ein
 - **Junge / Mädchen** — nur nötig für die Mischung
 - Paare mit `|` verbinden, mehrere Paare mit `;` trennen, alles hinter `#` ist Kommentar
