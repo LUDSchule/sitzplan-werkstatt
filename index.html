@@ -137,6 +137,7 @@ main{display:grid; grid-template-columns:minmax(0,1fr) 380px; align-items:start}
 }
 .table.P{flex-direction:column}
 .mode-raum .table{cursor:move}
+.mode-raum .table.dk{border-color:var(--blue)}
 .sel{outline:2px solid var(--blue); outline-offset:2px}
 .handle{
   position:absolute; right:-9px; bottom:-9px; width:18px; height:18px;
@@ -308,7 +309,7 @@ label.lbl{font-size:12px; color:var(--ink-2)}
         <select class="field" id="rT" style="flex:1" aria-label="Art der Regel">
           <option value="hard">Darf nicht nebeneinander — Vorgabe</option>
           <option value="muss">Muss nebeneinander — Vorgabe</option>
-          <option value="nah">Benachbarte Tische, nicht nebeneinander — Vorgabe</option>
+          <option value="nah">Angedockt über Eck, nicht am selben Tisch — Vorgabe</option>
           <option value="gern">Gern nebeneinander — Wunsch</option>
           <option value="nicht">Lieber nicht nebeneinander — Wunsch</option>
         </select>
@@ -320,7 +321,7 @@ label.lbl{font-size:12px; color:var(--ink-2)}
       <div id="rulelist"></div>
       <div class="divider"></div>
       <h2>Regeln als Text</h2>
-      <p class="note">Zum Einlesen fertiger Regeln, etwa aus ausgewerteten Wunschzetteln. Ersetzt die bestehenden Regeln und festen Plätze. <b>Nicht</b>, <b>Muss</b> und <b>Nah</b> (benachbarte Tische, z. B. über Eck) sind Vorgaben, <b>Gern</b> und <b>Ungern</b> Wünsche. <b>Fest</b>: Tischnummer.Platz — Platz 1 ist links bzw. oben, Platz 2 rechts bzw. unten.</p>
+      <p class="note">Zum Einlesen fertiger Regeln, etwa aus ausgewerteten Wunschzetteln. Ersetzt die bestehenden Regeln und festen Plätze. <b>Nicht</b>, <b>Muss</b> und <b>Nah</b> (angedockter Nachbarplatz, z. B. über Eck) sind Vorgaben, <b>Gern</b> und <b>Ungern</b> Wünsche. <b>Fest</b>: Tischnummer.Platz — Platz 1 ist links bzw. oben, Platz 2 rechts bzw. unten.</p>
       <textarea class="field mono" id="rtext" style="min-height:120px; font-size:12px"
 placeholder="# Regeln
 Ruhe: Anna, Ben
@@ -628,47 +629,130 @@ const hasRole = r => S.fixtures.some(f => (FTYPES[f.type] || {}).role === r);
 /* =====================================================================
    Bewertung und Automatik
    ===================================================================== */
-const W = {hard:-1000, gern:30, nicht:-18, ruhe:16, vorne:45, blick:30, mix:9, neu:-11, allein:-40};
-const NEAR = 150;   // cm zwischen zwei Plätzen: gilt als Nachbartisch
+const W = {hard:-1000, gern:30, gern2:8, naehe:6, nicht:-18, ruhe:16, vorne:45, blick:30, mix:9, neu:-11, allein:-40};
 const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
 const kidById = id => S.students.find(s => s.id === id);
-let SEATPOS = {}, WISH = new Map();
-// Vor jeder Berechnung: Platzkoordinaten und Wunschlisten je Kind
+
+/* ---------- Andocken: Tische, die sich berühren, bilden Nachbarplätze ---------- */
+const TOUCH = 2;        // cm Toleranz für „berührt sich“
+const DOCK_SNAP = 15;   // cm: so nah muss ein Tisch beim Ziehen kommen, um anzudocken
+const rectOf = t => ({x:t.cx - t.w/2, y:t.cy - t.h/2, w:t.w, h:t.h});
+function seatCell(t, i){
+  const r = rectOf(t);
+  return isPortrait(t) ? {x:r.x, y:r.y + i*r.h/2, w:r.w, h:r.h/2} : {x:r.x + i*r.w/2, y:r.y, w:r.w/2, h:r.h};
+}
+function touching(a, b){
+  const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  const sideX = Math.abs(a.x + a.w - b.x) <= TOUCH || Math.abs(b.x + b.w - a.x) <= TOUCH;
+  const sideY = Math.abs(a.y + a.h - b.y) <= TOUCH || Math.abs(b.y + b.h - a.y) <= TOUCH;
+  return (sideX && oy > 1) || (sideY && ox > 1);
+}
+let DOCK = {};          // Platz -> Plätze an angedockten Tischen, die direkt anstoßen
+function computeDock(){
+  DOCK = {};
+  const cells = [];
+  for (const t of S.tables) for (const i of [0, 1]) cells.push({k:t.id + ":" + i, t:t.id, r:seatCell(t, i)});
+  for (let i = 0; i < cells.length; i++) for (let j = i + 1; j < cells.length; j++){
+    const a = cells[i], b = cells[j];
+    if (a.t === b.t || !touching(a.r, b.r)) continue;
+    (DOCK[a.k] = DOCK[a.k] || []).push(b.k);
+    (DOCK[b.k] = DOCK[b.k] || []).push(a.k);
+  }
+}
+const dockedTo = t => S.tables.filter(o => o !== t && touching(rectOf(t), rectOf(o))).map(o => o.id);
+// beim Ziehen bündig an benachbarte Tische anlegen und Kanten ausrichten
+function dockSnap(t){
+  let bx = null, by = null;
+  const better = (cur, d) => Math.abs(d) <= DOCK_SNAP && (cur === null || Math.abs(d) < Math.abs(cur));
+  for (const o of S.tables){
+    if (o === t) continue;
+    const a = rectOf(t), b = rectOf(o);
+    const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    if (oy > -DOCK_SNAP){
+      for (const d of [b.x + b.w - a.x, b.x - (a.x + a.w)]) if (better(bx, d)) bx = d;
+      const gx = Math.min(Math.abs(b.x + b.w - a.x), Math.abs(b.x - (a.x + a.w)));
+      if (oy > 0 && gx <= DOCK_SNAP)
+        for (const d of [b.y - a.y, b.y + b.h - (a.y + a.h)]) if (better(by, d)) by = d;
+    }
+    if (ox > -DOCK_SNAP){
+      for (const d of [b.y + b.h - a.y, b.y - (a.y + a.h)]) if (better(by, d)) by = d;
+      const gy = Math.min(Math.abs(b.y + b.h - a.y), Math.abs(b.y - (a.y + a.h)));
+      if (ox > 0 && gy <= DOCK_SNAP)
+        for (const d of [b.x - a.x, b.x + b.w - (a.x + a.w)]) if (better(bx, d)) bx = d;
+    }
+  }
+  if (bx !== null) t.cx += bx;
+  if (by !== null) t.cy += by;
+}
+
+let WISH = new Map(), NAH = new Set(), SEATPOS = {};
+// Vor jeder Berechnung: Plätze, Andockungen und Wunschlisten je Kind
 function prepare(){
   SC = seatScores();
   SEATPOS = {}; for (const s of allSeats()) SEATPOS[s.key] = s;
-  WISH = new Map();
-  for (const r of S.rules) if (r.t === "gern" || r.t === "muss"){
+  computeDock();
+  WISH = new Map(); NAH = new Set();
+  for (const r of S.rules){
+    if (r.t === "nah") NAH.add(pairKey(r.a, r.b));
+    if (r.t !== "gern" && r.t !== "muss") continue;
     if (!WISH.has(r.a)) WISH.set(r.a, new Set());
     if (!WISH.has(r.b)) WISH.set(r.b, new Set());
     WISH.get(r.a).add(r.b); WISH.get(r.b).add(r.a);
   }
 }
-function nearSeats(k1, k2){
-  if (!k1 || !k2 || tableOfSeat(k1) === tableOfSeat(k2)) return false;
-  const a = SEATPOS[k1], b = SEATPOS[k2];
-  return !!a && !!b && Math.hypot(a.x - b.x, a.y - b.y) <= NEAR;
-}
+// nur Tischpartner (für „neue Kombinationen“ und Plätze leeren)
 function neighbours(as){
   const m = new Map();
   for (const k in as){ const p = as[partnerSeat(k)]; if (p != null) m.set(pairKey(as[k], p), true); }
   return m;
 }
+// Paar -> "tisch" (selber Tisch) oder "dock" (angedockter Nachbarplatz)
+function relations(as){
+  const m = new Map();
+  for (const k in as){
+    const a = as[k], p = as[partnerSeat(k)];
+    if (p != null) m.set(pairKey(a, p), "tisch");
+    for (const d of DOCK[k] || []){
+      const b = as[d];
+      if (b != null && !m.has(pairKey(a, b))) m.set(pairKey(a, b), "dock");
+    }
+  }
+  return m;
+}
+const seatNeighbours = (as, k) => [as[partnerSeat(k)], ...(DOCK[k] || []).map(d => as[d])].filter(x => x != null);
 function seatMap(as){ const m = new Map(); for (const k in as) m.set(as[k], k); return m; }
+// Ist eine Vorgabe verletzt?
+function ruleBroken(r, rel){
+  const pk = pairKey(r.a, r.b), on = rel.get(pk);
+  if (r.t === "hard") return on === "tisch" || (on === "dock" && !NAH.has(pk));
+  if (r.t === "muss") return on !== "tisch";
+  if (r.t === "nah")  return on !== "dock";
+  return false;
+}
 function score(as){
-  let sum = 0; const nb = neighbours(as), pos = seatMap(as);
+  let sum = 0;
+  const rel = relations(as), pos = seatMap(as);
   for (const r of S.rules){
     if (r.t === "gern") continue;
-    if (r.t === "nah"){ if (!nearSeats(pos.get(r.a), pos.get(r.b))) sum += W.hard; continue; }
-    const on = nb.has(pairKey(r.a, r.b));
-    if (r.t === "muss"){ if (!on) sum += W.hard; }
-    else if (on) sum += W[r.t];
+    if (r.t === "nicht"){ const on = rel.get(pairKey(r.a, r.b)); if (on) sum += on === "tisch" ? W.nicht : W.nicht / 2; continue; }
+    if (ruleBroken(r, rel)) sum += W.hard;
   }
   for (const k in as){
-    const kid = kidById(as[k]); if (!kid) continue;
-    const partner = as[partnerSeat(k)], w = WISH.get(kid.id);
-    if (partner == null) sum += W.allein;
-    else if (w && w.has(partner)) sum += W.gern;
+    const id = as[k], kid = kidById(id); if (!kid) continue;
+    if (as[partnerSeat(k)] == null) sum += W.allein;
+    const w = WISH.get(id);
+    if (w){
+      const n = seatNeighbours(as, k).filter(x => w.has(x)).length;
+      if (n) sum += W.gern + (n - 1) * W.gern2;
+      else {
+        // kein Wunschkind direkt daneben: wenigstens in der Nähe (niedrigste Priorität)
+        let d = Infinity; const me = SEATPOS[k];
+        for (const x of w){ const o = SEATPOS[pos.get(x)]; if (o) d = Math.min(d, Math.hypot(me.x - o.x, me.y - o.y)); }
+        if (d < 600) sum += W.naehe * (1 - d / 600);
+      }
+    }
     const sc = SC[k]; if (!sc) continue;
     if (kid.f.ruhe)  sum += W.ruhe  * sc.ruhe;
     if (kid.f.vorne) sum += W.vorne * sc.vorne;
@@ -680,39 +764,43 @@ function score(as){
       if (a && b && a.g !== "-" && b.g !== "-") sum += (a.g !== b.g ? W.mix : -W.mix * 0.6);
     }
   }
-  if (S.mix === "neu") for (const p of S.prev) if (nb.has(p)) sum += W.neu;
+  if (S.mix === "neu"){ const nb = neighbours(as); for (const p of S.prev) if (nb.has(p)) sum += W.neu; }
   return sum;
 }
-// Wie viele Kinder mit Wünschen sitzen neben einem Wunschkind?
+// Wie viele Kinder mit Wünschen sitzen direkt neben einem Wunschkind (am Tisch oder angedockt)?
 function wishStats(as){
-  let ok = 0, total = 0; const missing = [];
+  let ok = 0, total = 0, more = 0; const missing = [];
   const pos = seatMap(as);
   for (const kid of S.students){
     const w = WISH.get(kid.id); if (!w) continue;
     total++;
-    const k = pos.get(kid.id), p = k ? as[partnerSeat(k)] : null;
-    if (p != null && w.has(p)) ok++; else missing.push(kid.name);
+    const k = pos.get(kid.id);
+    const n = k ? seatNeighbours(as, k).filter(x => w.has(x)).length : 0;
+    if (n){ ok++; if (n > 1) more++; } else missing.push(kid.name);
   }
-  return {ok, total, missing};
+  return {ok, total, more, missing};
 }
 function violations(as){
-  const nb = neighbours(as), pos = seatMap(as), out = [];
+  const rel = relations(as), out = [];
   const nm = id => { const s = kidById(id); return s ? s.name : "?"; };
   for (const r of S.rules){
-    const on = nb.has(pairKey(r.a, r.b));
-    if (r.t === "hard"  &&  on) out.push({lvl:"bad",  txt:`${nm(r.a)} und ${nm(r.b)} sitzen nebeneinander — Vorgabe verletzt`});
-    if (r.t === "muss"  && !on) out.push({lvl:"bad",  txt:`${nm(r.a)} und ${nm(r.b)} sitzen nicht nebeneinander — Vorgabe verletzt`});
-    if (r.t === "nah"   && !nearSeats(pos.get(r.a), pos.get(r.b))) out.push({lvl:"bad", txt:`${nm(r.a)} und ${nm(r.b)} sitzen nicht an benachbarten Tischen — Vorgabe verletzt`});
-    if (r.t === "nicht" &&  on) out.push({lvl:"warn", txt:`${nm(r.a)} neben ${nm(r.b)} — unerwünscht`});
+    const on = rel.get(pairKey(r.a, r.b));
+    if (ruleBroken(r, rel)){
+      if (r.t === "hard") out.push({lvl:"bad", txt:`${nm(r.a)} und ${nm(r.b)} sitzen ${on === "tisch" ? "am selben Tisch" : "angedockt nebeneinander"} — Vorgabe verletzt`});
+      if (r.t === "muss") out.push({lvl:"bad", txt:`${nm(r.a)} und ${nm(r.b)} sitzen nicht am selben Tisch — Vorgabe verletzt`});
+      if (r.t === "nah")  out.push({lvl:"bad", txt:`${nm(r.a)} und ${nm(r.b)} sitzen nicht an angedockten Tischen nebeneinander — Vorgabe verletzt`});
+    }
+    if (r.t === "nicht" && on) out.push({lvl:"warn", txt:`${nm(r.a)} neben ${nm(r.b)} — unerwünscht`});
   }
+  if (NAH.size && !Object.keys(DOCK).length) out.push({lvl:"bad", txt:"Im Raum sind keine Tische angedockt — „Nah“ lässt sich so nicht erfüllen"});
   for (const kid of S.students){
     if (validFix(kid) && as[kid.fix] !== kid.id) out.push({lvl:"bad", txt:`${kid.name} sitzt nicht auf dem festen Platz ${seatLabel(kid.fix)}`});
   }
   const alone = [];
   for (const k in as) if (as[partnerSeat(k)] == null) alone.push(nm(as[k]));
-  if (alone.length) out.push({lvl:"warn", txt:`Sitzt allein: ${alone.join(", ")}`});
+  if (alone.length) out.push({lvl:"warn", txt:`Allein am Tisch: ${alone.join(", ")}`});
   const ws = wishStats(as);
-  if (ws.missing.length) out.push({lvl:"warn", txt:`Ohne Wunschnachbarn: ${ws.missing.join(", ")}`});
+  if (ws.missing.length) out.push({lvl:"warn", txt:`Ohne Wunschkind direkt daneben: ${ws.missing.join(", ")}`});
   const noise = hasRole("noise"), front = hasRole("front");
   for (const k in as){
     const kid = kidById(as[k]), sc = SC[k]; if (!kid || !sc) continue;
@@ -777,7 +865,7 @@ function generate(n){
   if (!kids.length || !seats.length) return [];
   const res = [];
   for (let i = 0; i < n * 4 && res.length < n; i++){
-    const r = climb(build(seats, kids, hs, fx), seats, 6000, fx);
+    const r = climb(build(seats, kids, hs, fx), seats, 7000, fx);
     const sig = Object.entries(r.as).sort().map(e => e.join("")).join(",");
     if (res.some(x => x.sig === sig)) continue;
     res.push({...r, sig, v:violations(r.as), ws:wishStats(r.as)});
@@ -832,7 +920,7 @@ function drawRoom(){
 
   for (const t of S.tables){
     const el = document.createElement("div");
-    el.className = "table " + (isPortrait(t) ? "P" : "L") + (isSel("t", t.id) ? " sel" : "");
+    el.className = "table " + (isPortrait(t) ? "P" : "L") + (isSel("t", t.id) ? " sel" : "") + (editing && dockedTo(t).length ? " dk" : "");
     el.dataset.tid = t.id;
     el.style.left = pctX(t.cx - t.w/2); el.style.top = pctY(t.cy - t.h/2);
     el.style.width = pctX(t.w); el.style.height = pctY(t.h);
@@ -854,11 +942,10 @@ function drawRoom(){
   markBad();
 }
 function markBad(){
-  const nb = neighbours(S.assign);
+  const rel = relations(S.assign), pos = seatMap(S.assign);
   for (const r of S.rules){
-    const on = nb.has(pairKey(r.a, r.b)), pos = seatMap(S.assign);
-    const nahBad = r.t === "nah" && pos.has(r.a) && pos.has(r.b) && !nearSeats(pos.get(r.a), pos.get(r.b));
-    if (!((r.t === "hard" && on) || (r.t === "muss" && !on) || nahBad)) continue;
+    if (r.t !== "hard" && r.t !== "muss" && r.t !== "nah") continue;
+    if (!pos.has(r.a) || !pos.has(r.b) || !ruleBroken(r, rel)) continue;
     for (const k in S.assign){
       if (S.assign[k] === r.a || S.assign[k] === r.b){
         const e = room.querySelector(`[data-seat="${k}"]`); if (e) e.classList.add("flag-bad");
@@ -909,7 +996,7 @@ function drawProps(){
     return `<div class="prop${i === 0 ? " best" : ""}">
       <div class="top"><span class="score">${Math.round(p.sc)}</span><span class="lbl-u">Vorschlag ${i + 1}${i === 0 ? " · bester" : ""}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="lbl-u">${bad ? `${bad} Vorgabe verletzt · ` : "Alle Vorgaben erfüllt · "}${p.ws.total ? `${p.ws.ok} von ${p.ws.total} Kindern neben einem Wunschkind` : ""}</div>
+      <div class="lbl-u">${bad ? `${bad} Vorgabe verletzt · ` : "Alle Vorgaben erfüllt · "}${p.ws.total ? `${p.ws.ok} von ${p.ws.total} Kindern direkt neben einem Wunschkind${p.ws.more ? `, ${p.ws.more} davon neben mehreren` : ""}` : ""}</div>
       <ul>${list || "<li>Alle Regeln erfüllt.</li>"}</ul>
       <button class="btn" data-take="${i}">Übernehmen</button></div>`;
   }).join("");
@@ -935,7 +1022,7 @@ function drawSel(){
     const t = S.tables.find(x => x.id === sel.id); if (!t){ sel = null; return drawSel(); }
     box.innerHTML = `<div class="selbox">
       <div class="t">Tisch ${t.id}</div>
-      <div class="note mono" style="margin:2px 0 10px">${Math.round(t.w)} × ${Math.round(t.h)} cm · 2 Plätze ${isPortrait(t) ? "übereinander" : "nebeneinander"}</div>
+      <div class="note mono" style="margin:2px 0 10px">${Math.round(t.w)} × ${Math.round(t.h)} cm · 2 Plätze ${isPortrait(t) ? "übereinander" : "nebeneinander"}<br>${dockedTo(t).length ? "Angedockt an Tisch " + dockedTo(t).join(", ") : "Nicht angedockt"}</div>
       <div class="row"><button class="btn" id="selRot">Drehen</button><button class="btn danger" id="selDel">Löschen</button></div></div>`;
   } else {
     const f = S.fixtures.find(x => x.id === sel.id); if (!f){ sel = null; return drawSel(); }
@@ -953,7 +1040,7 @@ function drawSel(){
 function hint(){
   document.getElementById("hint").innerHTML = mode === "plan"
     ? '<span><b>Sitzplan:</b> Namen aus der Liste auf einen Platz ziehen. Platz auf Platz tauscht.</span><span>Rot umrandet = eine Vorgabe ist verletzt.</span>'
-    : '<span><b>Raum:</b> Tische und Elemente ziehen. Antippen wählt aus, blaue Ecke ändert die Größe.</span><span>Entf-Taste löscht das Ausgewählte.</span>';
+    : '<span><b>Raum:</b> Tische und Elemente ziehen. Tische docken an, wenn man sie an einen anderen heranschiebt — angedockte Tische sind blau umrandet.</span><span>Antippen wählt aus, blaue Ecke ändert die Größe, Entf löscht.</span>';
 }
 function redraw(){
   prepare();
@@ -1147,7 +1234,7 @@ document.addEventListener("pointermove", e => {
   }
   const p = roomPoint(e);
   if (drag.kind === "mvT"){
-    const t = drag.t; t.cx = snap(p.x - drag.dx); t.cy = snap(p.y - drag.dy); clampTable(t);
+    const t = drag.t; t.cx = snap(p.x - drag.dx); t.cy = snap(p.y - drag.dy); dockSnap(t); clampTable(t);
   } else if (drag.kind === "mvF"){
     const f = drag.f; f.x = snap(p.x - drag.dx); f.y = snap(p.y - drag.dy); clampFix(f);
   } else if (drag.kind === "rsF"){

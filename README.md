@@ -37,6 +37,7 @@ Unter *Raum* lassen sich Klassenräume einrichten und speichern.
 - **Eigene Räume:** Namen eingeben, **Speichern**. Später über die Auswahlliste wieder **Laden**, verändern und erneut speichern. Beim Laden eines anderen Raums wird die Sitzordnung geleert, Namen und Regeln bleiben.
 - **Größe:** Breite und Tiefe in Metern. Mit *Inhalt mitskalieren* wird alles mitgezogen — praktisch, um eine Skizze an die echten Maße anzupassen.
 - **Elemente:** Tisch, Tafel, Smartboard, Pult, Tür, Fenster, Waschbecken, Schrank, Fächer, Regal, Wand / Säule und ein freies Element mit eigener Beschriftung. Im Modus **Raum** ziehen, über die blaue Ecke vergrößern, **Drehen** oder Taste `R`, **Löschen** oder Entf-Taste.
+- **Andocken:** Einen Tisch im Modus *Raum* an einen anderen heranschieben — ab 15 cm Abstand schnappt er bündig an, Seite an Seite oder über Eck. Angedockte Tische sind blau umrandet. Plätze, die an angedockten Tischen direkt aneinanderstoßen, gelten als Sitznachbarn
 - **Form:** Der Raum ist ein Rechteck. Nischen, L-Formen oder Säulen mit *Wand / Säule* abdecken.
 - **Bewertung:** Tür und Waschbecken gelten als unruhig, Tafel und Smartboard als vorne, das Pult zählt fürs Blickfeld. Fehlen solche Elemente, fließt das jeweilige Bedürfnis nicht in die Bewertung ein.
 
@@ -64,9 +65,10 @@ Mädchen: Carla, Hana
 - **Ruhe / Vorne / Blick** — Bedürfnisse
 - **Nicht** — Vorgabe der Lehrkraft: dürfen nicht am selben Tisch sitzen
 - **Muss** — Vorgabe der Lehrkraft: sitzen immer am selben Tisch
-- **Nah** — Vorgabe der Lehrkraft: sitzen an benachbarten Tischen (höchstens 1,5 m auseinander), z. B. über Eck, aber nicht am selben Tisch. Kombiniert mit **Nicht** für dasselbe Paar
+- **Nah** — Vorgabe der Lehrkraft: sitzen an angedockten Tischen direkt nebeneinander, z. B. über Eck, aber nicht am selben Tisch
 - **Fest** — fester Platz als `Name = Tisch.Platz`; Platz 1 ist links bzw. oben, Platz 2 rechts bzw. unten. Alternativ im Sitzplan das Kind hinsetzen und in der Kinderliste **F** antippen
 - **Gern / Ungern** — Wünsche der Kinder, fließen in die Bewertung ein
-- Die Vorschläge zeigen, wie viele Kinder neben mindestens einem Wunschkind sitzen. Niemand sitzt allein, wenn es sich vermeiden lässt
+- **Nicht** gilt für den Platz am selben Tisch und für angedockte Nachbarplätze
+- Die Vorschläge zeigen, wie viele Kinder direkt neben mindestens einem Wunschkind sitzen — am selben Tisch oder am angedockten Nachbartisch. Weitere erfüllte Wünsche zählen zusätzlich, übrige Wünsche ziehen die Kinder mit niedrigster Priorität in die Nähe. Niemand sitzt allein, wenn es sich vermeiden lässt
 - **Junge / Mädchen** — nur nötig für die Mischung
 - Paare mit `|` verbinden, mehrere Paare mit `;` trennen, alles hinter `#` ist Kommentar
