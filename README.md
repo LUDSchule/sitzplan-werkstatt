@@ -1,19 +1,30 @@
 # Sitzplan-Werkstatt
 
-Sitzpläne bauen: Tische verschieben, Kinder auf Plätze ziehen, Vorgaben und Wünsche eingeben und mehrere bewertete Sitzordnungen automatisch vorschlagen lassen. Speichert auf Wunsch automatisch im Schul-OneDrive.
+Sitzpläne bauen: Tische verschieben, Kinder auf Plätze ziehen, Vorgaben und Wünsche eingeben und mehrere bewertete Sitzordnungen automatisch vorschlagen lassen.
 
-**Die App enthält keine Schülerdaten.** Namen, Regeln und Sitzordnungen liegen nur im Browser und — nach Anmeldung — im eigenen Schul-OneDrive (Ordner `Apps/Sitzplan-Werkstatt`).
+**Die App enthält keine Schülerdaten.** Namen, Regeln und Sitzordnungen liegen nur im Browser und in einer Datei im eigenen Schul-OneDrive. Die App hat keinen Server und keine Anmeldung.
 
 Die App aufrufen: https://ludschule.github.io/sitzplan-werkstatt/
 
 ---
 
-## Gut zu wissen
+## PC und iPad abgleichen
 
-- **iPad:** funktioniert in Safari. Beim Anmelden öffnet sich ein kleines Fenster — Pop-ups für die Seite müssen erlaubt sein (*Einstellungen → Safari → Pop-ups blockieren* aus, oder beim Hinweis erlauben).
-- **Mehrere Geräte:** Auf jedem Gerät einmal anmelden. Beim ersten Anmelden fragt die App, ob der Stand aus OneDrive geladen werden soll. Gespeichert wird danach automatisch etwa 1,5 Sekunden nach jeder Änderung.
-- **Gleichzeitig bearbeiten:** Nicht auf zwei Geräten zugleich arbeiten — der zuletzt gespeicherte Stand gewinnt.
-- **Ohne Anmeldung:** Die App bleibt voll nutzbar und speichert im Browser. Unter *Sichern* gibt es außerdem **Als Datei speichern** und **Datei öffnen**.
+Der Stand liegt als Datei `sitzplan-werkstatt.json` im Schul-OneDrive.
+
+**PC (Edge oder Chrome)** — speichert automatisch:
+1. *Sichern → Neue Datei anlegen* und im Explorer den OneDrive-Ordner der Schule wählen.
+2. Fragt der Browser nach Zugriff: *Bei jedem Besuch zulassen*. Sonst beim nächsten Öffnen einmal oben auf *Datei wieder verbinden* klicken.
+3. Danach wird jede Änderung in die Datei geschrieben. Änderungen vom iPad werden geladen, sobald man ins Fenster zurückkehrt.
+
+**iPad (Safari)** — Laden und Sichern von Hand:
+1. Zu Beginn oben **Laden** → *Durchsuchen* → *OneDrive* → `sitzplan-werkstatt.json`.
+2. Am Ende oben **Sichern** → *In Dateien sichern* → *OneDrive* → denselben Ordner → *Sichern*, bei Nachfrage *Ersetzen*.
+3. Oben steht, ob es noch ungesicherte Änderungen gibt.
+
+**Gut zu wissen**
+- Nicht auf beiden Geräten gleichzeitig arbeiten. Trifft der PC auf eine Datei, die anderswo geändert wurde, während er selbst Änderungen hat, fragt er nach, welcher Stand gelten soll.
+- Die OneDrive-App muss auf PC und iPad angemeldet sein und synchronisieren.
 - **Datenschutz:** Schülerdaten gehören ins Schul-OneDrive, nicht in ein privates Konto. Im Zweifel mit Schulleitung oder Datenschutzbeauftragten abstimmen.
 
 ---

@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sitzplan-Werkstatt</title>
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@5.22.0/lib/msal-browser.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap">
@@ -85,10 +84,13 @@ header .sub{font-size:12px; color:var(--ink-3)}
 .seg{display:inline-flex; border:1px solid var(--line-2); border-radius:var(--r); overflow:hidden}
 .seg button{border:0; background:transparent; padding:7px 13px; cursor:pointer; font-size:13px; color:var(--ink-2)}
 .seg button[aria-pressed="true"]{background:var(--navy); color:#fff}
-.od{font-size:12px; padding:4px 10px; border-radius:20px; background:var(--sunk); color:var(--ink-3); white-space:nowrap}
+.od{border:0; cursor:pointer; font-size:12px; padding:4px 10px; border-radius:20px; background:var(--sunk); color:var(--ink-3); white-space:nowrap}
 .od[data-kind="ok"]{background:var(--good-soft); color:var(--good)}
 .od[data-kind="busy"]{background:var(--blue-soft); color:var(--blue)}
 .od[data-kind="bad"]{background:var(--bad-soft); color:var(--bad)}
+.od[data-kind="warn"]{background:var(--warn-soft); color:var(--warn)}
+.steps{margin:0 0 10px; padding-left:18px; font-size:12px; color:var(--ink-2)}
+.steps li{margin-bottom:3px}
 
 /* ---------- Grundlayout ---------- */
 main{display:grid; grid-template-columns:minmax(0,1fr) 380px; align-items:start}
@@ -247,8 +249,10 @@ label.lbl{font-size:12px; color:var(--ink-2)}
   <h1>Sitzplan-Werkstatt</h1>
   <span class="sub mono" id="cnt">0 Kinder · 0 Plätze</span>
   <div class="spacer"></div>
-  <span class="od" id="odStatus" data-kind="off">OneDrive wird geprüft …</span>
-  <button class="btn" id="btnOD">Mit OneDrive verbinden</button>
+  <button class="od" id="syncStatus" data-kind="off" type="button">Wird geprüft …</button>
+  <button class="btn" id="btnSyncA" hidden></button>
+  <button class="btn" id="btnSyncB" hidden></button>
+  <input type="file" id="fileOpen" hidden>
   <div class="seg" role="group" aria-label="Modus">
     <button id="mPlan" aria-pressed="true">Sitzplan</button>
     <button id="mRaum" aria-pressed="false">Raum</button>
@@ -386,15 +390,36 @@ Mädchen: Anna, Carla"></textarea>
 
     <!-- Sichern -->
     <div class="tabpane" id="tab-daten">
-      <h2>OneDrive</h2>
-      <p class="note">Nach der Anmeldung mit dem Schulkonto wird jede Änderung automatisch in Ihrem OneDrive gesichert — im Ordner <span class="mono">Apps / Sitzplan-Werkstatt</span>. Auf dem iPad oder einem anderen Rechner ebenfalls anmelden, der Stand wird geladen. Die App sieht nur diesen einen Ordner.</p>
-      <div class="divider"></div>
-      <h2>Als Datei</h2>
-      <p class="note">Unabhängig von OneDrive: den kompletten Stand samt Räumen herunterladen oder eine gesicherte Datei öffnen.</p>
-      <div class="row">
-        <button class="btn" id="btnFileSave">Als Datei speichern</button>
-        <label class="btn" for="fileOpen" style="cursor:pointer">Datei öffnen</label>
-        <input type="file" id="fileOpen" accept="application/json,.json" hidden>
+      <h2>Mit OneDrive abgleichen</h2>
+      <p class="note">Der Stand liegt als eine Datei <span class="mono">sitzplan-werkstatt.json</span> in Ihrem Schul-OneDrive. PC und iPad lesen und schreiben dieselbe Datei — ohne Anmeldung in der App.</p>
+
+      <div id="syncAuto" hidden>
+        <p class="note"><b>Dieser Browser speichert automatisch.</b> Einmal einrichten:</p>
+        <ol class="steps">
+          <li><b>Neue Datei anlegen</b> und im Explorer Ihren OneDrive-Ordner der Schule wählen (links „OneDrive – …“).</li>
+          <li>Ist die Datei dort schon vorhanden, stattdessen <b>Vorhandene Datei verbinden</b>.</li>
+          <li>Fragt der Browser nach Zugriff: <b>Bei jedem Besuch zulassen</b>.</li>
+        </ol>
+        <div class="row">
+          <button class="btn primary" id="btnNewFile">Neue Datei anlegen</button>
+          <button class="btn" id="btnPickFile">Vorhandene Datei verbinden</button>
+        </div>
+        <p class="note" id="fileInfo" style="margin-top:10px"></p>
+        <p class="note">Jede Änderung landet nach etwa einer Sekunde in der Datei. Änderungen vom iPad werden geladen, sobald Sie in dieses Fenster zurückkehren.</p>
+        <button class="btn ghost danger" id="btnUnlink">Verbindung zur Datei trennen</button>
+      </div>
+
+      <div id="syncManual" hidden>
+        <p class="note"><b>Auf dem iPad</b> geht das Speichern in OneDrive nur über das Teilen-Menü:</p>
+        <ol class="steps">
+          <li><b>Zu Beginn: Aus OneDrive laden</b> → Durchsuchen → OneDrive → <span class="mono">sitzplan-werkstatt.json</span>.</li>
+          <li><b>Am Ende: In OneDrive sichern</b> → „In Dateien sichern“ → OneDrive → denselben Ordner → <b>Sichern</b>, bei Nachfrage <b>Ersetzen</b>.</li>
+        </ol>
+        <p class="note">Solange oben <b>Nicht in OneDrive gesichert</b> steht, sind Änderungen nur auf diesem Gerät.</p>
+        <div class="row">
+          <button class="btn" id="btnLoad2">Aus OneDrive laden</button>
+          <button class="btn primary" id="btnSave2">In OneDrive sichern</button>
+        </div>
       </div>
       <div class="divider"></div>
       <h2>Als Text</h2>
@@ -525,10 +550,10 @@ function migrate(o){
    Speicher
    ===================================================================== */
 const KEY = "sitzplan-werkstatt.v2";
-let suppressCloud = false;
+let suppressSync = false;
 function save(){
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
-  if (!suppressCloud) scheduleCloud();
+  if (!suppressSync) syncChanged();
 }
 function load(){
   try {
@@ -537,11 +562,11 @@ function load(){
   } catch(e){}
 }
 function applyState(){
-  suppressCloud = true;
+  suppressSync = true;
   document.getElementById("mix").value = S.mix || "aus";
   sel = null;
   redraw();
-  suppressCloud = false;
+  suppressSync = false;
 }
 function adopt(o){
   const m = migrate(o);
@@ -1195,127 +1220,269 @@ document.getElementById("btnImport").onclick = () => {
     if (!adopt(JSON.parse(document.getElementById("dump").value))) alert("Im Text steht kein gültiger Sitzplan.");
   } catch(e){ alert("Der Text lässt sich nicht lesen. Bitte den vollständigen gesicherten Stand einfügen."); }
 };
-document.getElementById("btnFileSave").onclick = () => {
-  const blob = new Blob([JSON.stringify(S, null, 1)], {type:"application/json"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "sitzplan-" + new Date().toISOString().slice(0, 10) + ".json";
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
-};
-document.getElementById("fileOpen").onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
-  try { if (!adopt(JSON.parse(await f.text()))) alert("Diese Datei enthält keinen Sitzplan."); }
-  catch(err){ alert("Die Datei lässt sich nicht lesen."); }
-  e.target.value = "";
-};
 
 /* =====================================================================
-   OneDrive
-   EINRICHTUNG: Nach der Registrierung bei Microsoft die Anwendungs-ID
-   hier eintragen.
+   Abgleich über eine Datei im OneDrive
+   PC (Edge/Chrome): Datei verbinden, danach automatisches Speichern.
+   iPad/Safari: Laden über die Dateien-App, Sichern über das Teilen-Menü.
    ===================================================================== */
-const CONFIG = {
-  clientId: "",                                                     // Anwendungs-ID (Client-ID)
-  authority: "https://login.microsoftonline.com/organizations",     // oder .../<Mandanten-ID der Schule>
-  file: "sitzplan.json"                                             // Dateiname im App-Ordner
-};
-const SCOPES = ["Files.ReadWrite.AppFolder"];
-const GRAPH = "https://graph.microsoft.com/v1.0/me/drive/special/approot:/";
-let msalApp = null, account = null, cloudTimer = null, cloudBusy = false, cloudAgain = false;
+const FILE_NAME = "sitzplan-werkstatt.json";
+const SYNCKEY = KEY + ".sync";
+const AUTO = "showSaveFilePicker" in window && "showOpenFilePicker" in window;
+let fileHandle = null;          // nur AUTO
+let fileState = "none";         // none | perm | ok | error
+let fileJson = null;            // Inhalt der Datei beim letzten Laden/Sichern
+let syncAt = null;              // Zeitpunkt des letzten Abgleichs
+let syncTimer = null, syncBusy = false, syncAgain = false, syncMsg = "";
 
-function odStatus(text, kind){ const el = document.getElementById("odStatus"); el.textContent = text; el.dataset.kind = kind || "off"; }
-function odButton(signedIn){ document.getElementById("btnOD").textContent = signedIn ? "Abmelden" : "Mit OneDrive verbinden"; }
-async function odToken(){
-  try { return (await msalApp.acquireTokenSilent({scopes:SCOPES, account})).accessToken; }
-  catch(e){ return (await msalApp.acquireTokenPopup({scopes:SCOPES, account})).accessToken; }
+const hhmm = t => new Date(t).toLocaleTimeString("de-DE", {hour:"2-digit", minute:"2-digit"});
+const isPlaceholderState = () => !S.students.length || S.students.every(s => /^Beispiel /.test(s.name));
+const localJson = () => JSON.stringify(S);
+const isDirty = () => localJson() !== fileJson;
+
+function storeSync(){
+  try { localStorage.setItem(SYNCKEY, JSON.stringify({json:fileJson, at:syncAt})); } catch(e){}
 }
-const odUrl = () => GRAPH + encodeURIComponent(CONFIG.file) + ":/content";
-async function cloudLoad(){
-  const t = await odToken();
-  const res = await fetch(odUrl(), {headers:{Authorization:"Bearer " + t}});
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error("Status " + res.status);
-  return await res.json();
+function restoreSync(){
+  try { const o = JSON.parse(localStorage.getItem(SYNCKEY) || "null"); if (o){ fileJson = o.json; syncAt = o.at; } } catch(e){}
 }
-async function cloudSave(){
-  if (!account) return;
-  if (cloudBusy){ cloudAgain = true; return; }
-  cloudBusy = true; odStatus("Speichert …", "busy");
-  try {
-    const t = await odToken();
-    const res = await fetch(odUrl(), {method:"PUT", headers:{Authorization:"Bearer " + t, "Content-Type":"application/json"}, body:JSON.stringify(S)});
-    if (!res.ok) throw new Error("Status " + res.status);
-    odStatus("In OneDrive gesichert · " + new Date().toLocaleTimeString("de-DE", {hour:"2-digit", minute:"2-digit"}), "ok");
-  } catch(e){
-    odStatus("OneDrive nicht erreicht — nur lokal gesichert", "bad");
-  } finally {
-    cloudBusy = false;
-    if (cloudAgain){ cloudAgain = false; scheduleCloud(); }
+
+/* kleiner Speicher für den Datei-Zugriff (nur IndexedDB kann ihn aufheben) */
+function idb(mode, fn){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("sitzplan-werkstatt", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onerror = () => rej(r.error);
+    r.onsuccess = () => {
+      const tx = r.result.transaction("kv", mode), q = fn(tx.objectStore("kv"));
+      tx.oncomplete = () => res(q.result);
+      tx.onerror = () => rej(tx.error);
+    };
+  });
+}
+const idbGet = k => idb("readonly", s => s.get(k));
+const idbSet = (k, v) => idb("readwrite", s => s.put(v, k));
+const idbDel = k => idb("readwrite", s => s.delete(k));
+
+/* Anzeige */
+function renderSync(){
+  const st = document.getElementById("syncStatus");
+  const a = document.getElementById("btnSyncA"), b = document.getElementById("btnSyncB");
+  const set = (txt, kind) => { st.textContent = txt; st.dataset.kind = kind; };
+  document.getElementById("syncAuto").hidden = !AUTO;
+  document.getElementById("syncManual").hidden = AUTO;
+  if (AUTO){
+    b.hidden = true;
+    const info = document.getElementById("fileInfo");
+    document.getElementById("btnUnlink").hidden = !fileHandle;
+    info.innerHTML = fileHandle ? `Verbunden mit <span class="mono">${esc(fileHandle.name)}</span>` : "Noch keine Datei verbunden.";
+    if (!fileHandle){ set("Keine OneDrive-Datei verbunden", "warn"); a.hidden = false; a.textContent = "Datei verbinden"; return; }
+    if (fileState === "perm"){ set("Zugriff auf die Datei bestätigen", "warn"); a.hidden = false; a.textContent = "Datei wieder verbinden"; return; }
+    a.hidden = true;
+    if (fileState === "error"){ set(syncMsg || "Datei nicht erreichbar", "bad"); a.hidden = false; a.textContent = "Neu verbinden"; return; }
+    if (syncBusy){ set("Speichert …", "busy"); return; }
+    if (isDirty()){ set("Speichert gleich …", "busy"); return; }
+    set(syncMsg || ("In OneDrive gesichert" + (syncAt ? " · " + hhmm(syncAt) : "")), "ok");
+  } else {
+    a.hidden = false; a.textContent = "Laden";
+    b.hidden = false; b.textContent = "Sichern";
+    if (fileJson == null){ set("Noch nicht mit OneDrive abgeglichen", "warn"); return; }
+    if (isDirty()){ set("Nicht in OneDrive gesichert", "warn"); b.classList.add("primary"); return; }
+    b.classList.remove("primary");
+    set(syncMsg || ("Abgeglichen" + (syncAt ? " · " + hhmm(syncAt) : "")), "ok");
   }
 }
-function scheduleCloud(){ if (!account) return; clearTimeout(cloudTimer); cloudTimer = setTimeout(cloudSave, 1500); }
-const isPlaceholderState = () => !S.students.length || S.students.every(s => /^Beispiel /.test(s.name));
-async function afterLogin(interactive){
-  odButton(true); odStatus("Verbunden · lädt …", "busy");
+function syncChanged(){
+  syncMsg = "";
+  if (AUTO && fileHandle && fileState === "ok"){
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(reconcile, 1000);
+  }
+  renderSync();
+}
+
+/* gemeinsamer Teil: Stand aus Dateitext übernehmen */
+function parseState(txt){
+  try { return migrate(JSON.parse(txt)); } catch(e){ return null; }
+}
+function takeState(data){
+  S = data; props = [];
+  applyState();
+  try { localStorage.setItem(KEY, localJson()); } catch(e){}
+}
+
+/* ---------- PC: automatisches Speichern ---------- */
+async function writeFile(json){
+  const w = await fileHandle.createWritable();
+  await w.write(json);
+  await w.close();
+  fileJson = json; syncAt = Date.now(); storeSync();
+}
+function fileError(e){
+  if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")){ fileState = "perm"; }
+  else if (e && e.name === "NotFoundError"){ fileState = "error"; syncMsg = "Datei nicht gefunden — verschoben oder gelöscht?"; }
+  else { fileState = "error"; syncMsg = "Datei nicht erreichbar — nur im Browser gesichert"; }
+}
+// Gleicht Browser und Datei ab. Wird nach Änderungen und beim Zurückkehren ins Fenster aufgerufen.
+async function reconcile(firstConnect){
+  if (!fileHandle || fileState !== "ok") return;
+  if (syncBusy){ syncAgain = true; return; }
+  syncBusy = true; renderSync();
   try {
-    const data = await cloudLoad();
-    if (data && migrate(data)){
-      const takeCloud = isPlaceholderState() || !interactive ||
-        confirm("In Ihrem OneDrive liegt bereits ein gespeicherter Sitzplan.\n\nOK — diesen Stand laden.\nAbbrechen — den Stand aus diesem Browser behalten und damit OneDrive überschreiben.");
-      if (takeCloud){ S = data; props = []; applyState(); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} odStatus("Mit OneDrive verbunden", "ok"); }
-      else await cloudSave();
-    } else {
-      await cloudSave();
+    const txt = await (await fileHandle.getFile()).text();
+    const local = localJson();
+    if (!txt.trim()){                                  // neue, leere Datei
+      await writeFile(local);
+    } else if (txt === local){                         // nichts zu tun
+      if (fileJson !== txt){ fileJson = txt; syncAt = Date.now(); storeSync(); }
+    } else if (txt === fileJson){                      // nur hier geändert
+      await writeFile(local);
+    } else {                                           // Datei wurde anderswo geändert
+      const data = parseState(txt);
+      if (!data){
+        fileState = "error"; syncMsg = "Die Datei enthält keinen Sitzplan";
+      } else {
+        const localChanged = !isPlaceholderState() && (firstConnect ? true : local !== fileJson);
+        const take = !localChanged || confirm(firstConnect
+          ? "In der Datei liegt bereits ein Sitzplan.\n\nOK — den Stand aus der Datei laden.\nAbbrechen — die Datei mit dem Stand aus diesem Browser überschreiben."
+          : "Die Datei wurde inzwischen auf einem anderen Gerät geändert, und hier gibt es ebenfalls neue Änderungen.\n\nOK — den Stand aus der Datei laden (die Änderungen hier gehen verloren).\nAbbrechen — die Datei mit dem Stand von hier überschreiben.");
+        if (take){
+          fileJson = txt;
+          suppressSync = true; takeState(data); suppressSync = false;
+          const norm = localJson();
+          if (norm !== txt) await writeFile(norm); else { syncAt = Date.now(); storeSync(); }
+          syncMsg = "Neuer Stand aus OneDrive geladen · " + hhmm(Date.now());
+        } else {
+          await writeFile(local);
+        }
+      }
     }
   } catch(e){
-    odStatus("OneDrive nicht erreichbar (" + e.message + ")", "bad");
+    fileError(e);
+  } finally {
+    syncBusy = false;
+    renderSync();
+    if (syncAgain){ syncAgain = false; reconcile(); }
   }
 }
-async function odInit(){
-  const btn = document.getElementById("btnOD");
-  if (!CONFIG.clientId){ odStatus("OneDrive noch nicht eingerichtet", "off"); btn.hidden = true; return; }
-  if (typeof msal === "undefined"){ odStatus("Anmeldedienst nicht geladen — nur lokal", "bad"); btn.hidden = true; return; }
-  try {
-    msalApp = new msal.PublicClientApplication({
-      auth:{clientId:CONFIG.clientId, authority:CONFIG.authority, redirectUri:new URL("redirect.html", location.href).href},
-      cache:{cacheLocation:"localStorage"}
-    });
-    await msalApp.initialize();
-    const accs = msalApp.getAllAccounts();
-    if (accs.length){ account = accs[0]; msalApp.setActiveAccount(account); await afterLogin(false); }
-    else { odStatus("Nicht mit OneDrive verbunden", "off"); odButton(false); }
-  } catch(e){
-    odStatus("Anmeldung nicht verfügbar — nur lokal", "bad"); btn.hidden = true;
-  }
+async function useHandle(h, isNew){
+  fileHandle = h;
+  try { await idbSet("file", h); } catch(e){}
+  fileState = "ok"; syncMsg = "";
+  if (isNew) fileJson = null;
+  await reconcile(true);
 }
-document.getElementById("btnOD").onclick = async () => {
-  if (!msalApp) return;
-  if (account){
-    clearTimeout(cloudTimer);
-    const acc = account; account = null;
-    await msalApp.logoutPopup({account:acc}).catch(() => {});
-    odStatus("Nicht mit OneDrive verbunden", "off"); odButton(false);
-    return;
-  }
+async function ensurePermission(){
+  if (!fileHandle) return false;
   try {
-    const r = await msalApp.loginPopup({scopes:SCOPES, prompt:"select_account"});
-    account = r.account; msalApp.setActiveAccount(account);
-    await afterLogin(true);
-  } catch(e){
-    odStatus(/popup/i.test(String((e && e.errorCode) || e))
-      ? "Pop-up wurde blockiert — bitte Pop-ups für diese Seite erlauben"
-      : "Anmeldung abgebrochen", "off");
-  }
+    if (await fileHandle.queryPermission({mode:"readwrite"}) === "granted") return true;
+    return await fileHandle.requestPermission({mode:"readwrite"}) === "granted";
+  } catch(e){ return false; }
+}
+const pickerOpts = {types:[{description:"Sitzplan", accept:{"application/json":[".json"]}}], excludeAcceptAllOption:false};
+async function newFile(){
+  try {
+    const h = await showSaveFilePicker({...pickerOpts, suggestedName:FILE_NAME, startIn:"documents"});
+    await useHandle(h, true);
+  } catch(e){ if (e.name !== "AbortError"){ fileError(e); renderSync(); } }
+}
+async function pickFile(){
+  try {
+    const [h] = await showOpenFilePicker({...pickerOpts, startIn:"documents"});
+    fileHandle = h;
+    if (!await ensurePermission()){ fileState = "perm"; renderSync(); return; }
+    fileJson = null;
+    await useHandle(h, false);
+  } catch(e){ if (e.name !== "AbortError"){ fileError(e); renderSync(); } }
+}
+async function reconnect(){
+  if (fileState === "error"){ return pickFile(); }
+  if (await ensurePermission()){ fileState = "ok"; syncMsg = ""; await reconcile(); }
+  else { fileState = "perm"; renderSync(); }
+}
+async function unlink(){
+  if (!confirm("Verbindung zur Datei trennen? Die Datei selbst bleibt in OneDrive erhalten.")) return;
+  fileHandle = null; fileState = "none"; fileJson = null; syncAt = null; storeSync();
+  try { await idbDel("file"); } catch(e){}
+  renderSync();
+}
+async function initAuto(){
+  try { fileHandle = await idbGet("file") || null; } catch(e){ fileHandle = null; }
+  if (!fileHandle){ fileState = "none"; renderSync(); return; }
+  try {
+    fileState = (await fileHandle.queryPermission({mode:"readwrite"})) === "granted" ? "ok" : "perm";
+  } catch(e){ fileState = "perm"; }
+  renderSync();
+  if (fileState === "ok") reconcile();
+}
+if (AUTO){
+  document.getElementById("btnNewFile").onclick = newFile;
+  document.getElementById("btnPickFile").onclick = pickFile;
+  document.getElementById("btnUnlink").onclick = unlink;
+  const check = () => { if (document.visibilityState === "visible" && fileState === "ok") reconcile(); };
+  window.addEventListener("focus", check);
+  document.addEventListener("visibilitychange", check);
+}
+
+/* ---------- iPad: Laden und Sichern von Hand ---------- */
+function manualLoad(){ document.getElementById("fileOpen").click(); }
+document.getElementById("fileOpen").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  const txt = await f.text();
+  const data = parseState(txt);
+  if (!data){ alert("Diese Datei enthält keinen Sitzplan."); return; }
+  if (AUTO){ takeState(data); return; }
+  if (fileJson != null && isDirty() && !isPlaceholderState() &&
+      !confirm("Auf diesem Gerät gibt es Änderungen, die noch nicht in OneDrive gesichert sind. Sie gehen beim Laden verloren.\n\nTrotzdem laden?")) return;
+  suppressSync = true; takeState(data); suppressSync = false;
+  fileJson = localJson(); syncAt = Date.now(); storeSync();
+  syncMsg = "Aus OneDrive geladen · " + hhmm(syncAt);
+  renderSync();
 };
+async function manualSave(){
+  const json = localJson();
+  const file = new File([json], FILE_NAME, {type:"application/json"});
+  let done = false;
+  if (navigator.canShare && navigator.share){
+    try {
+      if (navigator.canShare({files:[file]})){ await navigator.share({files:[file]}); done = true; }
+    } catch(e){
+      if (e.name === "AbortError") return;      // Teilen abgebrochen
+    }
+  }
+  if (!done){
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(file);
+    a.download = FILE_NAME;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    alert("Die Datei wurde heruntergeladen. Bitte in den OneDrive-Ordner verschieben und die alte Fassung ersetzen.");
+  }
+  fileJson = json; syncAt = Date.now(); storeSync();
+  syncMsg = "Gesichert · " + hhmm(syncAt);
+  renderSync();
+}
+document.getElementById("btnLoad2").onclick = manualLoad;
+document.getElementById("btnSave2").onclick = manualSave;
+
+/* Kopfzeile */
+document.getElementById("btnSyncA").onclick = () => {
+  if (!AUTO) return manualLoad();
+  if (!fileHandle){ document.querySelector('[data-tab="daten"]').click(); return; }
+  reconnect();
+};
+document.getElementById("btnSyncB").onclick = manualSave;
+document.getElementById("syncStatus").onclick = () => document.querySelector('[data-tab="daten"]').click();
 
 /* =====================================================================
    Start
    ===================================================================== */
 load();
+restoreSync();
 if (!S.students.length){ S.students = DEMO.map(n => ({id:S.nextSid++, name:n, f:{}, g:"-"})); }
 applyState();
-odInit();
+if (AUTO) initAuto(); else renderSync();
 </script>
 </body>
 </html>
