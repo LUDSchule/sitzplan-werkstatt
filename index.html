@@ -1005,6 +1005,51 @@ function anneal(as, seats, iter, fx){
   }
   return polish(best, keys);
 }
+/* ---------- Suche: so lange rechnen, bis genug Pläne alles erfüllen ---------- */
+const SEARCH = {want:5, keepOther:5, maxMs:90000};
+// erfüllt ein Plan alles, was sich verlangen lässt?
+function isPerfect(p){
+  if (p.v.some(v => v.lvl === "bad")) return false;
+  if (p.ws.ok < p.ws.total) return false;
+  if (S.mix === "insel" && genderIslands(p.as).length) return false;
+  const kids = Object.keys(p.as).length, free = allSeats().length - kids;
+  const empty = S.tables.filter(t => p.as[t.id + ":0"] == null && p.as[t.id + ":1"] == null).length;
+  return empty <= Math.max(0, free - S.tables.length);
+}
+function oneRun(seats, kids, hs, fx){
+  const r = anneal(build(seats, kids, hs, fx), seats, 20000, fx);
+  const p = {...r, sig:Object.entries(r.as).sort().map(e => e.join("")).join(","), v:violations(r.as), ws:wishStats(r.as), ns:needStats(r.as)};
+  p.perfect = isPerfect(p);
+  return p;
+}
+let searchJob = null;
+function startSearch(onProgress, onDone){
+  prepare();
+  const seats = allSeats(), kids = S.students.map(s => s.id), hs = hardSet(), fx = fixedSeats();
+  if (!kids.length || !seats.length){ onDone([], {runs:0}); return; }
+  const found = new Map(), t0 = performance.now();
+  const job = searchJob = {stop:false, runs:0};
+  const summary = () => {
+    const all = [...found.values()].sort((a, b) => b.sc - a.sc);
+    const perfect = all.filter(p => p.perfect).slice(0, SEARCH.want);
+    const other = all.filter(p => !p.perfect).slice(0, SEARCH.keepOther);
+    return {list:[...perfect, ...other], perfect:perfect.length};
+  };
+  const step = () => {
+    if (job !== searchJob) return;
+    const until = performance.now() + 250;
+    let n = 0;
+    do {
+      const p = oneRun(seats, kids, hs, fx); job.runs++;
+      if (!found.has(p.sig)) found.set(p.sig, p);
+    } while (++n < 3 && performance.now() < until);
+    const s = summary(), ms = performance.now() - t0;
+    const done = job.stop || s.perfect >= SEARCH.want || ms >= SEARCH.maxMs;
+    if (done){ searchJob = null; onDone(s.list, {runs:job.runs, perfect:s.perfect, ms, stopped:job.stop}); }
+    else { onProgress({runs:job.runs, perfect:s.perfect, ms}); setTimeout(step, 0); }
+  };
+  setTimeout(step, 30);
+}
 function generate(n){
   prepare();
   const seats = allSeats(), kids = S.students.map(s => s.id), hs = hardSet(), fx = fixedSeats();
@@ -1171,7 +1216,14 @@ function drawProps(){
   const box = document.getElementById("props");
   if (!props.length){ box.innerHTML = '<div class="empty-note">Noch keine Vorschläge berechnet.</div>'; return; }
   const max = Math.max(...props.map(p => p.sc)), min = Math.min(...props.map(p => p.sc));
-  box.innerHTML = props.map((p, i) => {
+  const nPerfect = props.filter(p => p.perfect).length;
+  const info = searchInfo;
+  const head = info ? `<div class="wsum">${info.runs} Pläne in ${Math.round(info.ms / 1000)} s geprüft${info.stopped ? " (angehalten)" : ""}. `
+    + (nPerfect ? `<b>${nPerfect}</b> ${nPerfect === 1 ? "erfüllt" : "erfüllen"} alles.` : "<b>Keiner</b> erfüllt alles — unten die besten mit ihren offenen Punkten. Vorgaben oder Bedürfnisse lockern oder erneut rechnen.")
+    + `</div>` : "";
+  box.innerHTML = head + props.map((p, i) => {
+    const groupHead = i === 0 && p.perfect ? `<h2 style="margin:10px 0 6px">Erfüllen alles</h2>`
+      : (!p.perfect && (i === 0 || props[i - 1].perfect)) ? `<h2 style="margin:14px 0 6px">Weitere Vorschläge — mit offenen Punkten</h2>` : "";
     const bad = p.v.filter(v => v.lvl === "bad" && !/Bedürfnis/.test(v.txt)).length;
     const nsTxt = Object.keys(p.ns).map(f => `${NEED_LBL[f]} ${p.ns[f].ok}/${p.ns[f].total}`).join(" · ");
     const nsAll = Object.values(p.ns).every(s => s.ok === s.total);
@@ -1179,8 +1231,8 @@ function drawProps(){
     const list = p.v.slice(0, 8).map(v => `<li>${esc(v.txt)}</li>`).join("");
     const allWish = p.ws.total && p.ws.ok === p.ws.total;
     const isl = S.mix === "insel" ? genderIslands(p.as) : null;
-    return `<div class="prop${i === 0 ? " best" : ""}">
-      <div class="top"><span class="score">${Math.round(p.sc)}</span><span class="lbl-u">Vorschlag ${i + 1}${i === 0 ? " · bester" : ""}</span></div>
+    return groupHead + `<div class="prop${p.perfect ? " best" : ""}">
+      <div class="top"><span class="score">${Math.round(p.sc)}</span><span class="lbl-u">Vorschlag ${i + 1}${p.perfect ? " · erfüllt alles" : ""}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="wsum" style="margin:6px 0">${bad ? `<span style="color:var(--bad)">✗ ${bad} Vorgabe${bad > 1 ? "n" : ""} verletzt</span>` : `<span style="color:var(--good)">✓ Alle Vorgaben erfüllt</span>`}<br>
       ${nsTxt ? `${nsAll ? '<span style="color:var(--good)">✓</span>' : '<span style="color:var(--bad)">✗</span>'} Bedürfnisse: ${nsTxt}<br>` : ""}
@@ -1513,17 +1565,23 @@ document.getElementById("mPlan").onclick = () => setMode("plan");
 document.getElementById("mRaum").onclick = () => setMode("raum");
 document.getElementById("btnLeeren").onclick = () => { S.prev = [...neighbours(S.assign).keys()]; S.assign = {}; props = []; redraw(); };
 document.getElementById("btnPrint").onclick = () => { setMode("plan"); window.print(); };
+let searchInfo = null;
 function runAuto(){
   const btns = [document.getElementById("btnAuto"), document.getElementById("btnAuto2")];
+  if (searchJob){ searchJob.stop = true; return; }          // zweiter Klick: anhalten
   document.querySelector('[data-tab="vorschlaege"]').click();
-  btns.forEach(b => { b.disabled = true; b.dataset.label = b.textContent; b.textContent = "Rechnet …"; });
-  document.getElementById("props").innerHTML = '<div class="empty-note">Rechnet — das dauert ein paar Sekunden …</div>';
-  setTimeout(() => {
-    try { props = generate(5); }
-    finally { btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.label; }); }
-    drawProps();
-    if (!props.length) alert("Bitte zuerst Namen eintragen und mindestens einen Tisch aufstellen.");
-  }, 30);
+  btns.forEach(b => { b.dataset.label = b.dataset.label || b.textContent; b.textContent = "Stopp"; });
+  const box = document.getElementById("props");
+  const sec = ms => Math.round(ms / 1000);
+  box.innerHTML = '<div class="empty-note">Rechnet …</div>';
+  startSearch(
+    pr => { box.innerHTML = `<div class="empty-note">Rechnet … ${pr.runs} Pläne geprüft, <b>${pr.perfect} von ${SEARCH.want}</b> erfüllen alles · ${sec(pr.ms)} s (höchstens ${sec(SEARCH.maxMs)} s)</div>`; },
+    (list, info) => {
+      btns.forEach(b => { b.textContent = b.dataset.label; });
+      props = list; searchInfo = info;
+      drawProps();
+      if (!info.runs) alert("Bitte zuerst Namen eintragen und mindestens einen Tisch aufstellen.");
+    });
 }
 document.getElementById("btnAuto").onclick = runAuto;
 document.getElementById("btnAuto2").onclick = runAuto;

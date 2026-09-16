@@ -74,4 +74,8 @@ Mädchen: Carla, Hana
 - Die Vorschläge zeigen, wie viele Kinder direkt neben mindestens einem Wunschkind sitzen — am selben Tisch oder am angedockten Nachbartisch. Weitere erfüllte Wünsche zählen zusätzlich, übrige Wünsche ziehen die Kinder mit niedrigster Priorität in die Nähe. Niemand sitzt allein, wenn es sich vermeiden lässt
 - **Junge / Mädchen** — nur nötig für die Mischung. Mischung „Niemand sitzt nur neben Kindern des anderen Geschlechts“: Kinder mit mindestens zwei Nachbarn haben mindestens einen des eigenen Geschlechts
 - Ganz leere Tische werden vermieden, freie Einzelplätze sind erlaubt
+
+## Vorschläge
+
+**Vorschläge erzeugen** rechnet so lange, bis fünf Pläne alles erfüllen — höchstens 90 Sekunden, ein zweiter Klick auf **Stopp** hält früher an. Oben stehen die Pläne, die alles erfüllen (Vorgaben, Bedürfnisse, jedes Kind mit Wunsch neben einem Wunschkind, Mischung, kein vermeidbarer leerer Tisch), darunter die besten übrigen mit ihren offenen Punkten.
 - Paare mit `|` verbinden, mehrere Paare mit `;` trennen, alles hinter `#` ist Kommentar
