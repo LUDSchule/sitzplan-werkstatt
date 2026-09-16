@@ -65,17 +65,16 @@ Mädchen: Carla, Hana
 
 - **Ruhe / Vorne / Blick** — Bedürfnisse (werden wie Vorgaben behandelt)
 - **Nicht hinten** — Bedürfnis: nicht im hinteren Bereich, muss aber nicht ganz vorne sein
-- **Nicht** — Vorgabe der Lehrkraft: dürfen nicht am selben Tisch sitzen
+- **Nicht** — Vorgabe der Lehrkraft: dürfen nicht nebeneinander sitzen, weder am selben Tisch noch an angedockten Nachbarplätzen
 - **Muss** — Vorgabe der Lehrkraft: sitzen immer am selben Tisch
 - **Eck** — Vorgabe der Lehrkraft: sitzen über Eck an zwei quer zueinander angedockten Tischen, aber nicht direkt nebeneinander (weder am selben Tisch noch am Nachbartisch in derselben Richtung)
 - **Fest** — fester Platz als `Name = Tisch.Platz`; Platz 1 ist links bzw. oben, Platz 2 rechts bzw. unten. Alternativ im Sitzplan das Kind hinsetzen und in der Kinderliste **F** antippen
 - **Gern / Ungern** — Wünsche der Kinder, fließen in die Bewertung ein
-- **Nicht** gilt für den Platz am selben Tisch und für angedockte Nachbarplätze
-- Die Vorschläge zeigen, wie viele Kinder direkt neben mindestens einem Wunschkind sitzen — am selben Tisch oder am angedockten Nachbartisch. Weitere erfüllte Wünsche zählen zusätzlich, übrige Wünsche ziehen die Kinder mit niedrigster Priorität in die Nähe. Niemand sitzt allein, wenn es sich vermeiden lässt
+- Die Vorschläge zeigen, wie viele Kinder direkt neben mindestens einem Wunschkind sitzen — am selben Tisch oder am angedockten Nachbartisch. Weitere erfüllte Wünsche zählen zusätzlich, übrige Wünsche ziehen die Kinder mit niedrigster Priorität in die Nähe.
 - **Junge / Mädchen** — nur nötig für die Mischung. Mischung „Niemand sitzt nur neben Kindern des anderen Geschlechts“: Kinder mit mindestens zwei Nachbarn haben mindestens einen des eigenen Geschlechts
 - Ganz leere Tische werden vermieden, freie Einzelplätze sind erlaubt
+- Paare mit `|` verbinden, mehrere Paare mit `;` trennen, alles hinter `#` ist Kommentar
 
 ## Vorschläge
 
 **Vorschläge erzeugen** rechnet so lange, bis fünf Pläne alles erfüllen — höchstens 90 Sekunden, ein zweiter Klick auf **Stopp** hält früher an. Oben stehen die Pläne, die alles erfüllen (Vorgaben, Bedürfnisse, jedes Kind mit Wunsch neben einem Wunschkind, Mischung, kein vermeidbarer leerer Tisch), darunter die besten übrigen mit ihren offenen Punkten.
-- Paare mit `|` verbinden, mehrere Paare mit `;` trennen, alles hinter `#` ist Kommentar
