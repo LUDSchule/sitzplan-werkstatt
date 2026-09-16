@@ -51,6 +51,7 @@ Unter *Regeln → Regeln als Text* lassen sich fertige Regeln einfügen:
 # Regeln
 Ruhe: Anna, Ben, Carla
 Vorne: David
+Nicht hinten: Ida
 Blick: Emil
 Nicht: Ben | Finn
 Muss: David | Emil
@@ -62,7 +63,8 @@ Junge: Ben, Finn
 Mädchen: Carla, Hana
 ```
 
-- **Ruhe / Vorne / Blick** — Bedürfnisse
+- **Ruhe / Vorne / Blick** — Bedürfnisse (werden wie Vorgaben behandelt)
+- **Nicht hinten** — Bedürfnis: nicht im hinteren Bereich, muss aber nicht ganz vorne sein
 - **Nicht** — Vorgabe der Lehrkraft: dürfen nicht am selben Tisch sitzen
 - **Muss** — Vorgabe der Lehrkraft: sitzen immer am selben Tisch
 - **Eck** — Vorgabe der Lehrkraft: sitzen über Eck an zwei quer zueinander angedockten Tischen, aber nicht direkt nebeneinander (weder am selben Tisch noch am Nachbartisch in derselben Richtung)
@@ -70,5 +72,6 @@ Mädchen: Carla, Hana
 - **Gern / Ungern** — Wünsche der Kinder, fließen in die Bewertung ein
 - **Nicht** gilt für den Platz am selben Tisch und für angedockte Nachbarplätze
 - Die Vorschläge zeigen, wie viele Kinder direkt neben mindestens einem Wunschkind sitzen — am selben Tisch oder am angedockten Nachbartisch. Weitere erfüllte Wünsche zählen zusätzlich, übrige Wünsche ziehen die Kinder mit niedrigster Priorität in die Nähe. Niemand sitzt allein, wenn es sich vermeiden lässt
-- **Junge / Mädchen** — nur nötig für die Mischung
+- **Junge / Mädchen** — nur nötig für die Mischung. Mischung „Niemand sitzt nur neben Kindern des anderen Geschlechts“: Kinder mit mindestens zwei Nachbarn haben mindestens einen des eigenen Geschlechts
+- Ganz leere Tische werden vermieden, freie Einzelplätze sind erlaubt
 - Paare mit `|` verbinden, mehrere Paare mit `;` trennen, alles hinter `#` ist Kommentar

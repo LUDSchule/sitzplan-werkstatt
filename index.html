@@ -308,7 +308,7 @@ label.lbl{font-size:12px; color:var(--ink-2)}
       <p class="note" style="margin-top:8px">Beim ersten Öffnen stehen 30 Platzhalter im Raum. Sobald eigene Namen übernommen werden, verschwinden sie.</p>
       <div class="divider"></div>
       <h2>Kinder und ihre Bedürfnisse</h2>
-      <p class="note"><b>R</b> braucht Ruhe · <b>V</b> weit vorne · <b>B</b> im Blickfeld · <b>F</b> fester Platz. Namen auf einen Platz ziehen. Für einen festen Platz das Kind erst hinsetzen, dann <b>F</b> antippen — die Automatik lässt es dann dort sitzen.</p>
+      <p class="note"><b>R</b> braucht Ruhe · <b>V</b> weit vorne · <b>B</b> im Blickfeld · <b>NH</b> nicht ganz hinten · <b>F</b> fester Platz. Namen auf einen Platz ziehen. Für einen festen Platz das Kind erst hinsetzen, dann <b>F</b> antippen — die Automatik lässt es dann dort sitzen.</p>
       <div id="dupnote"></div>
       <div id="kidlist"></div>
     </div>
@@ -359,6 +359,7 @@ Mädchen: Anna, Carla"></textarea>
       <select class="field" id="mix" aria-label="Mischung">
         <option value="aus">Keine Vorgabe</option>
         <option value="geschlecht">An jedem Tisch gemischt (Jungen / Mädchen)</option>
+        <option value="insel">Niemand sitzt nur neben Kindern des anderen Geschlechts</option>
         <option value="neu">Neue Kombinationen — bisherige Paare auftrennen</option>
       </select>
     </div>
@@ -650,16 +651,19 @@ const hasRole = r => S.fixtures.some(f => (FTYPES[f.type] || {}).role === r);
    Bewertung und Automatik
    ===================================================================== */
 // Rangfolge: Vorgaben > Bedürfnisse (Vorne, Blick, Ruhe) > jedes Kind neben einem Wunschkind > weitere Wünsche > Nähe
-const W = {hard:-1000, need:-400, gern:100, gern2:10, naehe:6, nicht:-18, ruhe:8, vorne:12, blick:10, mix:9, neu:-11, allein:-150};
+const W = {hard:-1000, need:-400, gern:100, gern2:10, naehe:6, nicht:-18, ruhe:8, vorne:12, nh:6, blick:10, mix:9, neu:-11, allein:0, leer:-150, insel:-80};
 // ab wann ein Bedürfnis als erfüllt gilt (0 = ungünstigster, 1 = günstigster Platz im Raum)
-const NEED_OK = {vorne:0.6, blick:0.6, ruhe:0.4};
-const NEED_LBL = {vorne:"Vorne", blick:"Blick", ruhe:"Ruhe"};
-const needOk = (kid, sc, f) => !kid.f[f] || !hasRole(f === "ruhe" ? "noise" : f === "vorne" ? "front" : "teacher") || sc[f] >= NEED_OK[f];
+const NEEDS = ["vorne", "nh", "blick", "ruhe"];
+const NEED_OK = {vorne:0.6, nh:0.35, blick:0.6, ruhe:0.4};
+const NEED_LBL = {vorne:"Vorne", nh:"Nicht hinten", blick:"Blick", ruhe:"Ruhe"};
+const needRole = f => f === "ruhe" ? "noise" : f === "blick" ? "teacher" : "front";
+const needVal = (sc, f) => f === "nh" ? sc.vorne : sc[f];
+const needOk = (kid, sc, f) => !kid.f[f] || !hasRole(needRole(f)) || needVal(sc, f) >= NEED_OK[f];
 function needStats(as){
   const st = {};
   for (const k in as){
     const kid = kidById(as[k]), sc = SC[k]; if (!kid || !sc) continue;
-    for (const f of ["vorne", "blick", "ruhe"]){
+    for (const f of NEEDS){
       if (!kid.f[f]) continue;
       const s = st[f] = st[f] || {ok:0, total:0, missing:[]};
       s.total++;
@@ -805,12 +809,14 @@ function score(as){
       }
     }
     const sc = SC[k]; if (!sc) continue;
-    for (const f of ["vorne", "blick", "ruhe"]){
+    for (const f of NEEDS){
       if (!kid.f[f]) continue;
       if (!needOk(kid, sc, f)) sum += W.need;
-      sum += W[f] * sc[f];
+      sum += W[f] * needVal(sc, f);
     }
   }
+  for (const t of S.tables) if (as[t.id + ":0"] == null && as[t.id + ":1"] == null) sum += W.leer;
+  if (S.mix === "insel") sum += W.insel * genderIslands(as).length;
   if (S.mix === "geschlecht"){
     for (const t of S.tables){
       const a = kidById(as[t.id + ":0"]), b = kidById(as[t.id + ":1"]);
@@ -819,6 +825,16 @@ function score(as){
   }
   if (S.mix === "neu"){ const nb = neighbours(as); for (const p of S.prev) if (nb.has(p)) sum += W.neu; }
   return sum;
+}
+// Kinder mit mindestens zwei Nachbarn, die alle das andere Geschlecht haben
+function genderIslands(as){
+  const out = [];
+  for (const k in as){
+    const kid = kidById(as[k]); if (!kid || kid.g === "-") continue;
+    const nbs = [...new Set(seatNeighbours(as, k))].map(kidById).filter(x => x && x.g !== "-");
+    if (nbs.length >= 2 && nbs.every(x => x.g !== kid.g)) out.push(kid.name);
+  }
+  return out;
 }
 // Wie viele Kinder mit Wünschen sitzen direkt neben einem Wunschkind (am Tisch oder angedockt)?
 function wishStats(as){
@@ -851,15 +867,23 @@ function violations(as){
   }
   const alone = [];
   for (const k in as) if (as[partnerSeat(k)] == null) alone.push(nm(as[k]));
-  if (alone.length) out.push({lvl:"warn", txt:`Allein am Tisch: ${alone.join(", ")}`});
+  if (alone.length) out.push({lvl:"info", txt:`Allein am Tisch (freier Platz daneben): ${alone.join(", ")}`});
+  const empty = S.tables.filter(t => as[t.id + ":0"] == null && as[t.id + ":1"] == null).map(t => t.id);
+  if (empty.length) out.push({lvl:"warn", txt:`Leerer Tisch: ${empty.join(", ")}`});
+  if (S.mix === "insel"){
+    const isl = genderIslands(as);
+    if (isl.length) out.push({lvl:"warn", txt:`Nur neben Kindern des anderen Geschlechts: ${isl.join(", ")}`});
+    const unknown = S.students.filter(s => s.g === "-").length;
+    if (unknown) out.push({lvl:"warn", txt:`Bei ${unknown} Kindern fehlt die Angabe Junge/Mädchen`});
+  }
   const ws = wishStats(as);
   if (ws.missing.length) out.push({lvl:"warn", txt:`Ohne Wunschkind direkt daneben: ${ws.missing.join(", ")}`});
   const ns = needStats(as);
-  const why = {vorne:"sitzt nicht vorne", blick:"sitzt nicht im Blickfeld am Pult", ruhe:"sitzt nah an Tür oder Waschbecken"};
+  const why = {vorne:"sitzt nicht vorne", nh:"sitzt ganz hinten", blick:"sitzt nicht im Blickfeld am Pult", ruhe:"sitzt nah an Tür oder Waschbecken"};
   for (const f in ns) for (const n of ns[f].missing) out.push({lvl:"bad", txt:`${n} ${why[f]} — Bedürfnis ${NEED_LBL[f]} nicht erfüllt`});
-  for (const f of ["vorne", "blick", "ruhe"]){
-    const role = f === "ruhe" ? "noise" : f === "vorne" ? "front" : "teacher";
-    if (S.students.some(s => s.f[f]) && !hasRole(role)) out.push({lvl:"warn", txt:`${NEED_LBL[f]} lässt sich nicht prüfen — im Raum fehlt ${f === "ruhe" ? "Tür oder Waschbecken" : f === "vorne" ? "Tafel oder Smartboard" : "das Pult"}`});
+  for (const f of NEEDS){
+    const role = needRole(f);
+    if (S.students.some(s => s.f[f]) && !hasRole(role)) out.push({lvl:"warn", txt:`${NEED_LBL[f]} lässt sich nicht prüfen — im Raum fehlt ${role === "noise" ? "Tür oder Waschbecken" : role === "front" ? "Tafel oder Smartboard" : "das Pult"}`});
   }
   // Vorgaben zuerst, dann Bedürfnisse, dann Hinweise
   return out.sort((a, b) => (a.lvl === "bad" ? 0 : 1) - (b.lvl === "bad" ? 0 : 1));
@@ -873,8 +897,8 @@ function fixedSeats(){ const m = new Map(); for (const k of S.students) if (vali
 function hardSet(){ const m = new Map(); for (const r of S.rules) if (r.t === "hard") m.set(pairKey(r.a, r.b), true); return m; }
 function shuffle(a){ for (let i = a.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
 // passt der Platz zu den Bedürfnissen des Kindes?
-const fits = (id, k) => { const kid = kidById(id), sc = SC[k]; return !kid || !sc || ["vorne", "blick", "ruhe"].every(f => needOk(kid, sc, f)); };
-const needRank = id => { const f = (kidById(id) || {}).f || {}; return f.vorne || f.blick ? 0 : f.ruhe ? 1 : 2; };
+const fits = (id, k) => { const kid = kidById(id), sc = SC[k]; return !kid || !sc || NEEDS.every(f => needOk(kid, sc, f)); };
+const needRank = id => { const f = (kidById(id) || {}).f || {}; return f.vorne || f.blick || f.nh ? 0 : f.ruhe ? 1 : 2; };
 function build(seats, kids, hs, fx){
   const as = {}, placed = new Set();
   for (const [k, id] of fx){ as[k] = id; placed.add(id); }
@@ -915,7 +939,7 @@ function targetedSwap(cur, keySet, needSeats){
     if (!keySet.has(k)) continue;
     const kid = kidById(id), w = WISH.get(id), sc = SC[k];
     if (w && !seatNeighbours(cur, k).some(x => w.has(x))) unhappy.push({id, k, kind:"wish"});
-    if (kid && sc) for (const f of ["vorne", "blick", "ruhe"]) if (kid.f[f] && !needOk(kid, sc, f)) unhappy.push({id, k, kind:f});
+    if (kid && sc) for (const f of NEEDS) if (kid.f[f] && !needOk(kid, sc, f)) unhappy.push({id, k, kind:f});
   }
   if (!unhappy.length) return null;
   const u = pick(unhappy);
@@ -961,7 +985,7 @@ function anneal(as, seats, iter, fx){
   if (keys.length < 2) return {as:best, sc:bestSc};
   const keySet = new Set(keys);
   const needSeats = {};
-  for (const f of ["vorne", "blick", "ruhe"]) needSeats[f] = keys.filter(k => SC[k] && SC[k][f] >= NEED_OK[f]);
+  for (const f of NEEDS) needSeats[f] = keys.filter(k => SC[k] && needVal(SC[k], f) >= NEED_OK[f]);
   const T0 = 120, T1 = 0.3;
   for (let n = 0; n < iter; n++){
     let a, b;
@@ -1121,6 +1145,7 @@ function drawKids(){
       <button class="chip" data-f="ruhe"  data-kid="${k.id}" aria-pressed="${!!k.f.ruhe}"  title="Braucht Ruhe">R</button>
       <button class="chip" data-f="vorne" data-kid="${k.id}" aria-pressed="${!!k.f.vorne}" title="Weit vorne">V</button>
       <button class="chip" data-f="blick" data-kid="${k.id}" aria-pressed="${!!k.f.blick}" title="Im Blickfeld">B</button>
+      <button class="chip" data-f="nh" data-kid="${k.id}" aria-pressed="${!!k.f.nh}" title="Nicht ganz hinten">NH</button>
       <button class="chip" data-fix="${k.id}" aria-pressed="${validFix(k)}" title="${validFix(k) ? "Fester Platz: " + seatLabel(k.fix) : "Fester Platz — erst auf einen Platz ziehen, dann antippen"}">F</button>
       <select class="gsel" data-g="${k.id}" aria-label="Geschlecht von ${esc(k.name)}">
         <option value="-"${k.g === "-" ? " selected" : ""}>–</option>
@@ -1153,12 +1178,13 @@ function drawProps(){
     const pct = max === min ? 100 : Math.round((p.sc - min) / (max - min) * 100);
     const list = p.v.slice(0, 8).map(v => `<li>${esc(v.txt)}</li>`).join("");
     const allWish = p.ws.total && p.ws.ok === p.ws.total;
+    const isl = S.mix === "insel" ? genderIslands(p.as) : null;
     return `<div class="prop${i === 0 ? " best" : ""}">
       <div class="top"><span class="score">${Math.round(p.sc)}</span><span class="lbl-u">Vorschlag ${i + 1}${i === 0 ? " · bester" : ""}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="wsum" style="margin:6px 0">${bad ? `<span style="color:var(--bad)">✗ ${bad} Vorgabe${bad > 1 ? "n" : ""} verletzt</span>` : `<span style="color:var(--good)">✓ Alle Vorgaben erfüllt</span>`}<br>
       ${nsTxt ? `${nsAll ? '<span style="color:var(--good)">✓</span>' : '<span style="color:var(--bad)">✗</span>'} Bedürfnisse: ${nsTxt}<br>` : ""}
-      ${p.ws.total ? `${allWish ? '<span style="color:var(--good)">✓</span>' : "·"} <b>${p.ws.ok} von ${p.ws.total}</b> Kindern neben mindestens einem Wunschkind${p.ws.more ? ` · <b>${p.ws.more}</b> neben mehreren` : ""}` : ""}</div>
+      ${p.ws.total ? `${allWish ? '<span style="color:var(--good)">✓</span>' : "·"} <b>${p.ws.ok} von ${p.ws.total}</b> Kindern neben mindestens einem Wunschkind${p.ws.more ? ` · <b>${p.ws.more}</b> neben mehreren` : ""}` : ""}${isl ? `<br>${isl.length ? `· ${isl.length} Kind${isl.length > 1 ? "er" : ""} nur neben dem anderen Geschlecht` : '<span style="color:var(--good)">✓</span> Niemand nur neben dem anderen Geschlecht'}` : ""}</div>
       <ul>${list || "<li>Keine offenen Punkte.</li>"}</ul>
       <button class="btn" data-take="${i}">Übernehmen</button> <span class="note">danach unten jedes Kind im Einzelnen</span></div>`;
   }).join("");
@@ -1555,7 +1581,7 @@ document.getElementById("mix").onchange = e => { S.mix = e.target.value; save();
 
 /* Regeln als Text */
 const nrm = s => String(s).trim().toLowerCase().replace(/\s+/g, " ");
-const KEYMAP = {ruhe:"ruhe", vorne:"vorne", blick:"blick", blickfeld:"blick",
+const KEYMAP = {ruhe:"ruhe", vorne:"vorne", blick:"blick", blickfeld:"blick", "nicht hinten":"nh", nichthinten:"nh",
   nicht:"hard", vorgabe:"hard", muss:"muss", zusammen:"muss", eck:"nah", ecke:"nah", "über eck":"nah", "ueber eck":"nah", nah:"nah", gern:"gern", ungern:"nicht",
   fest:"fest", platz:"fest",
   junge:"m", jungen:"m", "mädchen":"w", maedchen:"w"};
@@ -1568,7 +1594,7 @@ function parseRules(txt){
     const m = line.match(/^([^:]+):\s*(.+)$/); if (!m) continue;
     const key = KEYMAP[nrm(m[1])]; if (!key) continue;
     const find = n => { const t = n.trim(); if (!t) return null; const id = idx.get(nrm(t)); if (id == null) unknown.add(t); return id; };
-    if (key === "ruhe" || key === "vorne" || key === "blick"){
+    if (key === "ruhe" || key === "vorne" || key === "blick" || key === "nh"){
       for (const n of m[2].split(/[,;]/)){ const id = find(n); if (id != null){ (flags[id] = flags[id] || {})[key] = true; used++; } }
     } else if (key === "fest"){
       for (const item of m[2].split(";")){
@@ -1629,7 +1655,7 @@ document.getElementById("btnROut").onclick = () => {
   const gen = g => S.students.filter(s => s.g === g).map(s => s.name);
   const L = ["# Regeln — aus der Sitzplan-Werkstatt"];
   const add = (k, v) => { if (v && v.length) L.push(`${k}: ${Array.isArray(v) ? v.join(", ") : v}`); };
-  add("Ruhe", pick("ruhe")); add("Vorne", pick("vorne")); add("Blick", pick("blick"));
+  add("Ruhe", pick("ruhe")); add("Vorne", pick("vorne")); add("Nicht hinten", pick("nh")); add("Blick", pick("blick"));
   add("Nicht", pairs("hard")); add("Muss", pairs("muss")); add("Eck", pairs("nah"));
   add("Fest", S.students.filter(validFix).map(s => `${s.name} = ${s.fix.split(":")[0]}.${+s.fix.split(":")[1] + 1}`).join("; "));
   add("Gern", pairs("gern")); add("Ungern", pairs("nicht"));
