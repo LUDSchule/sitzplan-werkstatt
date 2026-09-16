@@ -1,0 +1,1321 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sitzplan-Werkstatt</title>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@5.22.0/lib/msal-browser.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap">
+
+<style>
+:root{
+  --paper:#FAFBFC; --panel:#FFFFFF; --sunk:#F1F4F7;
+  --ink:#18202A; --ink-2:#4A5768; --ink-3:#7B8899;
+  --line:#DCE3EA; --line-2:#C3CEDA;
+  --karo:#D3E2F2; --karo-strong:#B4CCE6;
+  --navy:#0A4A8F; --blue:#1E7FC2; --blue-soft:#EAF2FA;
+  --good:#2E7D5B; --good-soft:#E8F3ED;
+  --warn:#9A6B12; --warn-soft:#FAF2E2;
+  --bad:#B3372B; --bad-soft:#FAECEA;
+  --tafel:#2E4A3C; --screen:#34465A; --hatch:#AEB9C6;
+  --shadow:0 1px 2px rgba(24,32,42,.06), 0 6px 18px rgba(24,32,42,.07);
+  --r:7px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#12171D; --panel:#191F27; --sunk:#10151B;
+    --ink:#E6ECF3; --ink-2:#A6B4C4; --ink-3:#6F7E8F;
+    --line:#2A3440; --line-2:#3A4653;
+    --karo:#1F2B3A; --karo-strong:#2D3F55;
+    --navy:#8FC0F0; --blue:#6FB0E8; --blue-soft:#17283A;
+    --good:#69C79B; --good-soft:#14291F;
+    --warn:#D9A94A; --warn-soft:#2A2214;
+    --bad:#E8897C; --bad-soft:#2E1A18;
+    --tafel:#3F6553; --screen:#4A5F78; --hatch:#3E4B5A;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#12171D; --panel:#191F27; --sunk:#10151B;
+  --ink:#E6ECF3; --ink-2:#A6B4C4; --ink-3:#6F7E8F;
+  --line:#2A3440; --line-2:#3A4653;
+  --karo:#1F2B3A; --karo-strong:#2D3F55;
+  --navy:#8FC0F0; --blue:#6FB0E8; --blue-soft:#17283A;
+  --good:#69C79B; --good-soft:#14291F;
+  --warn:#D9A94A; --warn-soft:#2A2214;
+  --bad:#E8897C; --bad-soft:#2E1A18;
+  --tafel:#3F6553; --screen:#4A5F78; --hatch:#3E4B5A;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,"Segoe UI",sans-serif;
+  font-size:14px; line-height:1.45; -webkit-text-size-adjust:100%;
+}
+h1,h2,h3{font-family:"Source Serif 4",Georgia,serif; font-weight:600; text-wrap:balance; margin:0}
+button,input,select,textarea{font:inherit; color:inherit}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+
+/* ---------- Kopfleiste ---------- */
+header{
+  display:flex; align-items:center; gap:12px 16px; flex-wrap:wrap;
+  padding:12px 18px; border-bottom:1px solid var(--line); background:var(--panel);
+  position:sticky; top:0; z-index:40;
+}
+header h1{font-size:19px; letter-spacing:-.2px; color:var(--navy)}
+header .sub{font-size:12px; color:var(--ink-3)}
+.spacer{flex:1}
+.btn{
+  border:1px solid var(--line-2); background:var(--panel); color:var(--ink);
+  border-radius:var(--r); padding:7px 12px; cursor:pointer; font-size:13px;
+  display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+}
+.btn:hover{border-color:var(--blue); color:var(--blue)}
+.btn:focus-visible,.seg button:focus-visible,.tabs button:focus-visible,.chip:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+.btn.primary{background:var(--navy); border-color:var(--navy); color:#fff}
+.btn.primary:hover{background:var(--blue); border-color:var(--blue); color:#fff}
+.btn.ghost{border-color:transparent; background:transparent; color:var(--ink-2)}
+.btn.ghost:hover{background:var(--sunk); color:var(--ink)}
+.btn.danger:hover{border-color:var(--bad); color:var(--bad)}
+.seg{display:inline-flex; border:1px solid var(--line-2); border-radius:var(--r); overflow:hidden}
+.seg button{border:0; background:transparent; padding:7px 13px; cursor:pointer; font-size:13px; color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--navy); color:#fff}
+.od{font-size:12px; padding:4px 10px; border-radius:20px; background:var(--sunk); color:var(--ink-3); white-space:nowrap}
+.od[data-kind="ok"]{background:var(--good-soft); color:var(--good)}
+.od[data-kind="busy"]{background:var(--blue-soft); color:var(--blue)}
+.od[data-kind="bad"]{background:var(--bad-soft); color:var(--bad)}
+
+/* ---------- Grundlayout ---------- */
+main{display:grid; grid-template-columns:minmax(0,1fr) 380px; align-items:start}
+@media (max-width:1000px){ main{grid-template-columns:1fr} }
+
+/* ---------- Raum ---------- */
+.stage{padding:18px; min-width:0; display:flex; flex-direction:column; align-items:center}
+.roomwrap{
+  position:relative; border:2px solid var(--ink-3); border-radius:2px;
+  background-color:var(--panel);
+  background-image:
+    linear-gradient(to right, var(--karo) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--karo) 1px, transparent 1px),
+    linear-gradient(to right, var(--karo-strong) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--karo-strong) 1px, transparent 1px);
+  touch-action:none; overflow:hidden;
+}
+.scale{margin-top:8px; font-size:12px; color:var(--ink-3); display:flex; gap:14px; flex-wrap:wrap; justify-content:center}
+.scale b{color:var(--ink-2); font-weight:500}
+
+.fx{
+  position:absolute; border-radius:2px; display:flex; align-items:center; justify-content:center;
+  font-size:10px; line-height:1.05; user-select:none; text-align:center; padding:1px;
+}
+.fx span{white-space:nowrap; overflow:hidden; max-width:100%; max-height:100%}
+.fx.vert span{writing-mode:vertical-rl; transform:rotate(180deg)}
+.fx.t-tafel{background:var(--tafel); color:#fff}
+.fx.t-beamer{background:var(--screen); color:#fff}
+.fx.t-tuer{background:var(--warn-soft); border:1.5px solid var(--warn); color:var(--warn)}
+.fx.t-fenster{background:var(--blue-soft); border:1.5px solid var(--blue); color:var(--blue)}
+.fx.t-waschbecken{background:var(--blue-soft); border:1.5px dashed var(--blue); color:var(--blue)}
+.fx.t-pult{background:var(--sunk); border:1.5px solid var(--ink-3); color:var(--ink-2); font-size:12px; font-weight:500; border-radius:4px}
+.fx.t-schrank,.fx.t-faecher,.fx.t-regal{background:var(--sunk); border:1.5px solid var(--line-2); color:var(--ink-3)}
+.fx.t-wand{background:repeating-linear-gradient(45deg, var(--hatch) 0 2px, var(--sunk) 2px 7px); border:1.5px solid var(--ink-3)}
+.fx.t-wand span{background:var(--panel); color:var(--ink-2); padding:1px 4px; border-radius:2px}
+.fx.t-frei{background:var(--panel); border:1.5px dashed var(--ink-3); color:var(--ink-2); white-space:normal}
+.fx.t-frei span{white-space:normal}
+.mode-raum .fx{cursor:move}
+.mode-plan .fx{pointer-events:none}
+
+.table{
+  position:absolute; border:1.5px solid var(--line-2); border-radius:4px;
+  background:var(--blue-soft); display:flex; box-shadow:var(--shadow);
+}
+.table.P{flex-direction:column}
+.mode-raum .table{cursor:move}
+.sel{outline:2px solid var(--blue); outline-offset:2px}
+.handle{
+  position:absolute; right:-9px; bottom:-9px; width:18px; height:18px;
+  background:var(--blue); border:2px solid var(--panel); border-radius:3px;
+  cursor:nwse-resize; z-index:5; touch-action:none;
+}
+.tnum{position:absolute; font-size:9px; color:var(--ink-3); font-family:"IBM Plex Mono",monospace; pointer-events:none}
+.seat{
+  flex:1; min-width:0; min-height:0; display:flex; align-items:center; justify-content:center;
+  font-size:11.5px; line-height:1.15; text-align:center; padding:2px 3px;
+  user-select:none; overflow:hidden; hyphens:auto; overflow-wrap:anywhere;
+}
+.mode-plan .seat{cursor:grab}
+.table.L .seat+.seat{border-left:1px dashed var(--line-2)}
+.table.P .seat+.seat{border-top:1px dashed var(--line-2)}
+.seat.empty{color:var(--ink-3)}
+.seat.over{background:var(--good-soft); box-shadow:inset 0 0 0 2px var(--good)}
+.seat.flag-bad{box-shadow:inset 0 0 0 2px var(--bad)}
+
+.hint{max-width:760px; margin:10px auto 0; font-size:12px; color:var(--ink-3); display:flex; gap:14px; flex-wrap:wrap; justify-content:center; text-align:center}
+.hint b{color:var(--ink-2); font-weight:500}
+
+/* ---------- Seitenspalte ---------- */
+.panel{border-left:1px solid var(--line); background:var(--panel); min-height:calc(100vh - 58px)}
+@media (max-width:1000px){ .panel{border-left:0; border-top:1px solid var(--line); min-height:0} }
+.tabs{display:flex; border-bottom:1px solid var(--line); position:sticky; top:58px; background:var(--panel); z-index:20}
+.tabs button{
+  flex:1; border:0; background:transparent; padding:11px 2px; cursor:pointer;
+  font-size:12.5px; color:var(--ink-2); border-bottom:2px solid transparent;
+}
+.tabs button[aria-selected="true"]{color:var(--navy); border-bottom-color:var(--navy); font-weight:500}
+.tabpane{padding:16px; display:none}
+.tabpane.on{display:block}
+.tabpane h2{font-size:14px; margin-bottom:6px}
+.note{font-size:12px; color:var(--ink-3); margin:0 0 10px}
+.note b{color:var(--ink-2); font-weight:500}
+.field{width:100%; border:1px solid var(--line-2); border-radius:var(--r); padding:8px 10px; background:var(--panel)}
+.field:focus{outline:2px solid var(--blue); outline-offset:0; border-color:transparent}
+textarea.field{min-height:92px; resize:vertical; font-size:13px}
+.row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.divider{height:1px; background:var(--line); margin:16px 0}
+label.lbl{font-size:12px; color:var(--ink-2)}
+
+.kid{display:flex; align-items:center; gap:7px; padding:5px 8px; border-radius:var(--r)}
+.kid:hover{background:var(--sunk)}
+.kid .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:grab; touch-action:none}
+.kid.placed .nm{color:var(--ink-3)}
+.chip{border:1px solid var(--line-2); background:var(--panel); border-radius:20px; padding:1px 7px; font-size:10.5px; cursor:pointer; color:var(--ink-3)}
+.chip[aria-pressed="true"]{background:var(--blue-soft); border-color:var(--blue); color:var(--blue)}
+.gsel{border:1px solid var(--line-2); border-radius:var(--r); padding:2px 4px; font-size:11px; background:var(--panel)}
+
+.rule{display:flex; align-items:center; gap:8px; font-size:12.5px; padding:6px 8px; border-radius:var(--r); margin-bottom:5px}
+.rule.hard{background:var(--bad-soft)}
+.rule.gern{background:var(--good-soft)}
+.rule.nicht{background:var(--warn-soft)}
+.rule .x{margin-left:auto; border:0; background:transparent; cursor:pointer; color:var(--ink-3); font-size:15px; line-height:1; padding:0 3px}
+.rule .x:hover{color:var(--bad)}
+
+.prop{border:1px solid var(--line-2); border-radius:var(--r); padding:10px 12px; margin-bottom:9px}
+.prop.best{border-color:var(--good); background:var(--good-soft)}
+.prop .top{display:flex; align-items:baseline; gap:8px}
+.prop .score{font-family:"IBM Plex Mono",monospace; font-size:17px; font-weight:500; color:var(--navy)}
+.lbl-u{font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.5px}
+.prop ul{margin:7px 0 9px; padding-left:16px; font-size:12px; color:var(--ink-2)}
+.bar{height:5px; border-radius:3px; background:var(--sunk); overflow:hidden; margin:7px 0}
+.bar i{display:block; height:100%; background:var(--good)}
+.empty-note{font-size:12.5px; color:var(--ink-3); padding:14px; text-align:center; border:1px dashed var(--line-2); border-radius:var(--r)}
+
+/* Raum-Reiter */
+.palette{display:grid; grid-template-columns:repeat(3,1fr); gap:6px}
+.palette button{
+  border:1px solid var(--line-2); background:var(--panel); border-radius:var(--r);
+  padding:7px 4px; font-size:12px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;
+}
+.palette button:hover{border-color:var(--blue); color:var(--blue)}
+.palette i{display:block; width:28px; height:12px; border-radius:2px}
+.sw-tisch{background:var(--blue-soft); border:1.5px solid var(--line-2)}
+.sw-tafel{background:var(--tafel)}
+.sw-beamer{background:var(--screen)}
+.sw-tuer{background:var(--warn-soft); border:1.5px solid var(--warn)}
+.sw-fenster{background:var(--blue-soft); border:1.5px solid var(--blue)}
+.sw-waschbecken{background:var(--blue-soft); border:1.5px dashed var(--blue)}
+.sw-pult{background:var(--sunk); border:1.5px solid var(--ink-3)}
+.sw-schrank,.sw-faecher,.sw-regal{background:var(--sunk); border:1.5px solid var(--line-2)}
+.sw-wand{background:repeating-linear-gradient(45deg, var(--hatch) 0 2px, var(--sunk) 2px 5px); border:1.5px solid var(--ink-3)}
+.sw-frei{background:var(--panel); border:1.5px dashed var(--ink-3)}
+.dim{display:grid; grid-template-columns:1fr auto 1fr; gap:6px; align-items:center}
+.dim .unit{position:relative}
+.dim .unit input{padding-right:26px}
+.dim .unit span{position:absolute; right:10px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--ink-3); pointer-events:none}
+.selbox{border:1px solid var(--line-2); border-radius:var(--r); padding:10px 12px}
+.selbox .t{font-weight:500}
+.dirty{color:var(--warn); font-size:12px}
+
+#ghost{position:fixed; z-index:99; pointer-events:none; padding:4px 9px; border-radius:5px; background:var(--navy); color:#fff; font-size:12px; box-shadow:var(--shadow); display:none}
+
+@media print{
+  header,.panel,.hint,.od{display:none !important}
+  .stage{padding:0}
+  .roomwrap{background-image:none !important; border-color:#888}
+  .handle{display:none}
+  body{background:#fff}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important; animation:none !important}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sitzplan-Werkstatt</h1>
+  <span class="sub mono" id="cnt">0 Kinder · 0 Plätze</span>
+  <div class="spacer"></div>
+  <span class="od" id="odStatus" data-kind="off">OneDrive wird geprüft …</span>
+  <button class="btn" id="btnOD">Mit OneDrive verbinden</button>
+  <div class="seg" role="group" aria-label="Modus">
+    <button id="mPlan" aria-pressed="true">Sitzplan</button>
+    <button id="mRaum" aria-pressed="false">Raum</button>
+  </div>
+  <button class="btn" id="btnLeeren">Plätze leeren</button>
+  <button class="btn primary" id="btnAuto">Vorschläge erzeugen</button>
+  <button class="btn ghost" id="btnPrint">Drucken</button>
+</header>
+
+<main>
+  <section class="stage">
+    <div class="roomwrap mode-plan" id="room"></div>
+    <div class="scale mono" id="scale"></div>
+    <div class="hint" id="hint"></div>
+  </section>
+
+  <aside class="panel">
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="kinder">Kinder</button>
+      <button role="tab" aria-selected="false" data-tab="regeln">Regeln</button>
+      <button role="tab" aria-selected="false" data-tab="vorschlaege">Vorschläge</button>
+      <button role="tab" aria-selected="false" data-tab="raum">Raum</button>
+      <button role="tab" aria-selected="false" data-tab="daten">Sichern</button>
+    </div>
+
+    <!-- Kinder -->
+    <div class="tabpane on" id="tab-kinder">
+      <h2>Namen einfügen</h2>
+      <p class="note">Eine Liste aus Excel oder Word hineinkopieren — ein Name pro Zeile.</p>
+      <textarea class="field" id="paste" placeholder="Anna&#10;Ben&#10;Carla&#10;…"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn primary" id="btnNamen">Namen übernehmen</button>
+        <button class="btn ghost" id="btnDemo">Beispielnamen zurücksetzen</button>
+      </div>
+      <p class="note" style="margin-top:8px">Beim ersten Öffnen stehen 30 Platzhalter im Raum. Sobald eigene Namen übernommen werden, verschwinden sie.</p>
+      <div class="divider"></div>
+      <h2>Kinder und ihre Bedürfnisse</h2>
+      <p class="note"><b>R</b> braucht Ruhe · <b>V</b> weit vorne · <b>B</b> im Blickfeld. Namen auf einen Platz ziehen.</p>
+      <div id="kidlist"></div>
+    </div>
+
+    <!-- Regeln -->
+    <div class="tabpane" id="tab-regeln">
+      <h2>Regel hinzufügen</h2>
+      <div class="row">
+        <select class="field" id="rA" style="flex:1" aria-label="Erstes Kind"></select>
+        <select class="field" id="rB" style="flex:1" aria-label="Zweites Kind"></select>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <select class="field" id="rT" style="flex:1" aria-label="Art der Regel">
+          <option value="hard">Darf nicht nebeneinander — Vorgabe</option>
+          <option value="gern">Gern nebeneinander — Wunsch</option>
+          <option value="nicht">Lieber nicht nebeneinander — Wunsch</option>
+        </select>
+        <button class="btn" id="btnRegel">Hinzufügen</button>
+      </div>
+      <div class="divider"></div>
+      <h2>Bestehende Regeln</h2>
+      <p class="note">Vorgaben werden nie gebrochen. Wünsche fließen in die Bewertung ein.</p>
+      <div id="rulelist"></div>
+      <div class="divider"></div>
+      <h2>Regeln als Text</h2>
+      <p class="note">Zum Einlesen fertiger Regeln, etwa aus ausgewerteten Wunschzetteln. Ersetzt die bestehenden Regeln.</p>
+      <textarea class="field mono" id="rtext" style="min-height:120px; font-size:12px"
+placeholder="# Regeln
+Ruhe: Anna, Ben
+Vorne: Carla
+Blick: David
+Nicht: Anna | Emil
+Gern: Carla | Frida; Ben | Gül
+Ungern: Hana | Ivo
+Junge: Ben, David
+Mädchen: Anna, Carla"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn primary" id="btnRIn">Regeln einlesen</button>
+        <button class="btn" id="btnROut">Aktuelle Regeln ausgeben</button>
+      </div>
+      <div id="rreport" style="margin-top:8px"></div>
+      <div class="divider"></div>
+      <h2>Mischung</h2>
+      <select class="field" id="mix" aria-label="Mischung">
+        <option value="aus">Keine Vorgabe</option>
+        <option value="geschlecht">An jedem Tisch gemischt (Jungen / Mädchen)</option>
+        <option value="neu">Neue Kombinationen — bisherige Paare auftrennen</option>
+      </select>
+    </div>
+
+    <!-- Vorschläge -->
+    <div class="tabpane" id="tab-vorschlaege">
+      <h2>Automatische Vorschläge</h2>
+      <p class="note">Die Werkstatt rechnet mehrere Sitzordnungen durch und bewertet sie nach Vorgaben, Wünschen und Bedürfnissen. Ruhe, Nähe zur Tafel und Blickfeld ergeben sich aus der Lage von Tür, Waschbecken, Tafel und Pult im Raum.</p>
+      <div class="row"><button class="btn primary" id="btnAuto2">5 Vorschläge erzeugen</button></div>
+      <div id="props" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Raum -->
+    <div class="tabpane" id="tab-raum">
+      <h2>Raum wählen</h2>
+      <p class="note">Aktuell: <b id="roomNameLbl">–</b> <span class="dirty" id="roomDirty" hidden>· ungespeicherte Änderungen</span></p>
+      <div class="row">
+        <select class="field" id="roomSel" style="flex:1" aria-label="Raum auswählen"></select>
+        <button class="btn" id="btnRoomLoad">Laden</button>
+      </div>
+      <p class="note" style="margin-top:6px">Beim Laden eines anderen Raums wird die Sitzordnung geleert. Namen und Regeln bleiben.</p>
+      <div class="row">
+        <input class="field" id="roomNameIn" placeholder="Name, z. B. Raum 204" style="flex:1" aria-label="Name für den Raum">
+        <button class="btn" id="btnRoomSave">Speichern</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn ghost danger" id="btnRoomDel">Ausgewählten eigenen Raum löschen</button>
+      </div>
+
+      <div class="divider"></div>
+      <h2>Größe</h2>
+      <div class="dim">
+        <div class="unit"><input class="field mono" id="roomW" type="number" min="3" max="25" step="0.1" aria-label="Breite in Metern"><span>m</span></div>
+        <span class="note" style="margin:0">×</span>
+        <div class="unit"><input class="field mono" id="roomH" type="number" min="3" max="25" step="0.1" aria-label="Tiefe in Metern"><span>m</span></div>
+      </div>
+      <div class="row" style="margin-top:8px; justify-content:space-between">
+        <label class="lbl"><input type="checkbox" id="roomScale" checked> Inhalt mitskalieren</label>
+        <button class="btn" id="btnRoomSize">Größe übernehmen</button>
+      </div>
+      <p class="note" style="margin-top:6px"><b>Mitskalieren</b> passt eine Skizze an die echten Maße an. Ohne Haken behalten Tische und Möbel ihre Größe — der Raum wird nur größer oder kleiner.</p>
+
+      <div class="divider"></div>
+      <h2>Hinzufügen</h2>
+      <p class="note">Wechselt in den Modus <b>Raum</b>. Verschieben per Ziehen, Größe über die blaue Ecke. Nischen und L-förmige Räume mit <b>Wand / Säule</b> abbilden.</p>
+      <div class="palette" id="palette"></div>
+
+      <div class="divider"></div>
+      <h2>Ausgewählt</h2>
+      <div id="selInfo"></div>
+    </div>
+
+    <!-- Sichern -->
+    <div class="tabpane" id="tab-daten">
+      <h2>OneDrive</h2>
+      <p class="note">Nach der Anmeldung mit dem Schulkonto wird jede Änderung automatisch in Ihrem OneDrive gesichert — im Ordner <span class="mono">Apps / Sitzplan-Werkstatt</span>. Auf dem iPad oder einem anderen Rechner ebenfalls anmelden, der Stand wird geladen. Die App sieht nur diesen einen Ordner.</p>
+      <div class="divider"></div>
+      <h2>Als Datei</h2>
+      <p class="note">Unabhängig von OneDrive: den kompletten Stand samt Räumen herunterladen oder eine gesicherte Datei öffnen.</p>
+      <div class="row">
+        <button class="btn" id="btnFileSave">Als Datei speichern</button>
+        <label class="btn" for="fileOpen" style="cursor:pointer">Datei öffnen</label>
+        <input type="file" id="fileOpen" accept="application/json,.json" hidden>
+      </div>
+      <div class="divider"></div>
+      <h2>Als Text</h2>
+      <p class="note">Notlösung ohne Datei: Text kopieren und auf dem anderen Gerät wieder einfügen.</p>
+      <div class="row"><button class="btn" id="btnExport">Stand in das Feld schreiben</button><button class="btn" id="btnCopy">Kopieren</button></div>
+      <textarea class="field mono" id="dump" style="margin-top:8px; min-height:110px; font-size:11px" placeholder="Hier erscheint der gesicherte Stand …"></textarea>
+      <div class="row" style="margin-top:8px"><button class="btn" id="btnImport">Aus dem Feld laden</button></div>
+    </div>
+  </aside>
+</main>
+
+<div id="ghost"></div>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   Grundlagen — alle Maße in Zentimetern
+   ===================================================================== */
+const FTYPES = {
+  tafel:       {label:"Tafel",        w:300, h:16,  role:"front"},
+  beamer:      {label:"Smartboard",   w:200, h:14,  role:"front"},
+  pult:        {label:"Pult",         w:140, h:70,  role:"teacher"},
+  tuer:        {label:"Tür",          w:18,  h:100, role:"noise"},
+  fenster:     {label:"Fenster",      w:14,  h:180, role:null},
+  waschbecken: {label:"Waschbecken",  w:25,  h:60,  role:"noise"},
+  schrank:     {label:"Schrank",      w:30,  h:120, role:null},
+  faecher:     {label:"Fächer",       w:30,  h:160, role:null},
+  regal:       {label:"Regal",        w:30,  h:120, role:null},
+  wand:        {label:"Wand / Säule", w:100, h:100, role:null},
+  frei:        {label:"Element",      w:120, h:60,  role:null}
+};
+const TABLE_DEFAULT = {w:130, h:50};
+const SNAP = 5, MIN_SIZE = 10;
+const clone = o => JSON.parse(JSON.stringify(o));
+
+// Standardraum: 8 × 9 m, 15 Doppeltische in 5 Reihen, Tafel unten
+const STD_TABLES = [];
+{ let n = 1;
+  for (const cy of [140, 265, 390, 515, 640])
+    for (const cx of [150, 400, 650]) STD_TABLES.push({id:n++, cx, cy, w:130, h:50});
+}
+// Beispielraum: 9 × 9 m, 16 Tische in freier Anordnung
+const R5E_TABLES = [
+  [1,129,98,"P"],[2,124,233,"P"],[3,135,369,"P"],[4,135,499,"P"],
+  [5,257,68,"L"],[6,315,208,"L"],[7,309,371,"L"],[8,302,533,"L"],
+  [9,392,68,"L"],[10,567,64,"L"],[11,638,214,"L"],[12,650,462,"L"],
+  [13,747,60,"L"],[14,798,170,"P"],[15,795,275,"P"],[16,796,399,"P"]
+].map(t => ({id:t[0], cx:t[1], cy:t[2], w:t[3]==="L"?128:89, h:t[3]==="L"?89:101}));
+
+const PRESETS = {
+  "Standardraum": {
+    room:{w:800, h:900}, tables:STD_TABLES,
+    fixtures:[
+      {type:"tafel",   x:250, y:868, w:300, h:16},
+      {type:"pult",    x:330, y:715, w:140, h:70},
+      {type:"tuer",    x:782, y:640, w:18,  h:100},
+      {type:"fenster", x:0,   y:120, w:14,  h:180},
+      {type:"fenster", x:0,   y:360, w:14,  h:180},
+      {type:"fenster", x:0,   y:600, w:14,  h:180}
+    ]
+  },
+  "Beispielraum": {
+    room:{w:900, h:900}, tables:R5E_TABLES,
+    fixtures:[
+      {type:"tafel",       x:300, y:840, w:375, h:20},
+      {type:"pult",        x:401, y:649, w:161, h:83},
+      {type:"faecher",     x:0,   y:289, w:30,  h:165},
+      {type:"faecher",     x:0,   y:630, w:30,  h:165},
+      {type:"schrank",     x:870, y:19,  w:30,  h:135},
+      {type:"schrank",     x:870, y:218, w:30,  h:135},
+      {type:"tuer",        x:880, y:529, w:20,  h:90},
+      {type:"waschbecken", x:875, y:743, w:25,  h:68}
+    ]
+  }
+};
+
+// Erfundene Platzhalter — keine echte Klasse.
+const DEMO = Array.from({length:30}, (_, i) => "Beispiel " + (i < 26 ? String.fromCharCode(65 + i) : (i + 1)));
+
+/* =====================================================================
+   Zustand
+   ===================================================================== */
+function roomFromPreset(name){
+  const p = PRESETS[name];
+  const fixtures = p.fixtures.map((f, i) => ({id:i + 1, ...f}));
+  return {room:clone(p.room), tables:clone(p.tables), fixtures};
+}
+function freshState(){
+  const r = roomFromPreset("Standardraum");
+  return {
+    room:r.room, tables:r.tables, fixtures:r.fixtures,
+    roomName:"Standardraum", roomDirty:false, rooms:{},
+    students:[], rules:[], mix:"aus", assign:{}, prev:[],
+    nextId:r.tables.length + 1, nextFid:r.fixtures.length + 1, nextSid:1
+  };
+}
+let S = freshState();
+let mode = "plan", sel = null, props = [], drag = null;
+
+function maxId(list){ return list.reduce((m, x) => Math.max(m, x.id || 0), 0); }
+
+// Ältere Stände (1200er Raster, ohne Raumelemente) in das neue Format überführen
+function migrate(o){
+  if (!o || !Array.isArray(o.tables) || !Array.isArray(o.students)) return null;
+  if (o.tables.length && o.tables[0].w == null){
+    const k = 0.75;
+    o.tables = o.tables.map(t => {
+      const d = t.o === "P" ? {w:118, h:135} : {w:170, h:118};
+      return {id:t.id, cx:Math.round(t.cx * k), cy:Math.round(t.cy * k), w:Math.round(d.w * k), h:Math.round(d.h * k)};
+    });
+    o.room = {w:900, h:900};
+    if (!o.fixtures){ o.fixtures = roomFromPreset("Beispielraum").fixtures; o.roomName = "Beispielraum"; }
+  }
+  if (!o.room) o.room = {w:900, h:900};
+  if (!Array.isArray(o.fixtures)) o.fixtures = [];
+  if (!o.rooms || typeof o.rooms !== "object") o.rooms = {};
+  if (!o.roomName) o.roomName = "Eigener Raum";
+  o.roomDirty = !!o.roomDirty;
+  o.rules = o.rules || []; o.assign = o.assign || {}; o.prev = o.prev || []; o.mix = o.mix || "aus";
+  o.nextId  = Math.max(o.nextId  || 0, maxId(o.tables) + 1);
+  o.nextFid = Math.max(o.nextFid || 0, maxId(o.fixtures) + 1);
+  o.nextSid = Math.max(o.nextSid || 0, maxId(o.students) + 1);
+  return o;
+}
+
+/* =====================================================================
+   Speicher
+   ===================================================================== */
+const KEY = "sitzplan-werkstatt.v2";
+let suppressCloud = false;
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+  if (!suppressCloud) scheduleCloud();
+}
+function load(){
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw){ const o = migrate(JSON.parse(raw)); if (o) S = o; }
+  } catch(e){}
+}
+function applyState(){
+  suppressCloud = true;
+  document.getElementById("mix").value = S.mix || "aus";
+  sel = null;
+  redraw();
+  suppressCloud = false;
+}
+function adopt(o){
+  const m = migrate(o);
+  if (!m) return false;
+  S = m; props = []; applyState(); save();
+  return true;
+}
+
+/* =====================================================================
+   Geometrie
+   ===================================================================== */
+const isPortrait = t => t.h > t.w;
+function seatsOf(t){
+  if (!isPortrait(t)) return [
+    {key:t.id + ":0", x:t.cx - t.w/4, y:t.cy},
+    {key:t.id + ":1", x:t.cx + t.w/4, y:t.cy}];
+  return [
+    {key:t.id + ":0", x:t.cx, y:t.cy - t.h/4},
+    {key:t.id + ":1", x:t.cx, y:t.cy + t.h/4}];
+}
+function allSeats(){ return S.tables.flatMap(seatsOf); }
+function rectDist(p, f){
+  const dx = Math.max(f.x - p.x, 0, p.x - (f.x + f.w));
+  const dy = Math.max(f.y - p.y, 0, p.y - (f.y + f.h));
+  return Math.hypot(dx, dy);
+}
+function nearest(p, list){ return Math.min(...list.map(f => rectDist(p, f))); }
+const partnerSeat = k => { const [t, i] = k.split(":"); return t + ":" + (i === "0" ? "1" : "0"); };
+const tableOfSeat = k => parseInt(k.split(":")[0], 10);
+
+let SC = {};
+function seatScores(){
+  const seats = allSeats(); if (!seats.length) return {};
+  const byRole = r => S.fixtures.filter(f => (FTYPES[f.type] || {}).role === r);
+  const noise = byRole("noise"), front = byRole("front"), teach = byRole("teacher");
+  const raw = seats.map(s => ({
+    key: s.key,
+    ruhe:  noise.length ?  nearest(s, noise) : null,
+    vorne: front.length ? -nearest(s, front) : null,
+    blick: teach.length ? -nearest(s, teach) : null
+  }));
+  const out = {};
+  for (const k of ["ruhe", "vorne", "blick"]){
+    if (raw[0][k] === null){ raw.forEach(r => { (out[r.key] = out[r.key] || {})[k] = 1; }); continue; }
+    const v = raw.map(r => r[k]), lo = Math.min(...v), hi = Math.max(...v), sp = (hi - lo) || 1;
+    raw.forEach(r => { (out[r.key] = out[r.key] || {})[k] = (r[k] - lo) / sp; });
+  }
+  return out;
+}
+const hasRole = r => S.fixtures.some(f => (FTYPES[f.type] || {}).role === r);
+
+/* =====================================================================
+   Bewertung und Automatik
+   ===================================================================== */
+const W = {hard:-1000, gern:26, nicht:-18, ruhe:16, vorne:13, blick:11, mix:9, neu:-11};
+const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+const kidById = id => S.students.find(s => s.id === id);
+function neighbours(as){
+  const m = new Map();
+  for (const k in as){ const p = as[partnerSeat(k)]; if (p != null) m.set(pairKey(as[k], p), true); }
+  return m;
+}
+function score(as){
+  let sum = 0; const nb = neighbours(as);
+  for (const r of S.rules) if (nb.has(pairKey(r.a, r.b))) sum += W[r.t];
+  for (const k in as){
+    const kid = kidById(as[k]), sc = SC[k]; if (!kid || !sc) continue;
+    if (kid.f.ruhe)  sum += W.ruhe  * sc.ruhe;
+    if (kid.f.vorne) sum += W.vorne * sc.vorne;
+    if (kid.f.blick) sum += W.blick * sc.blick;
+  }
+  if (S.mix === "geschlecht"){
+    for (const t of S.tables){
+      const a = kidById(as[t.id + ":0"]), b = kidById(as[t.id + ":1"]);
+      if (a && b && a.g !== "-" && b.g !== "-") sum += (a.g !== b.g ? W.mix : -W.mix * 0.6);
+    }
+  }
+  if (S.mix === "neu") for (const p of S.prev) if (nb.has(p)) sum += W.neu;
+  return sum;
+}
+function violations(as){
+  const nb = neighbours(as), out = [];
+  const nm = id => { const s = kidById(id); return s ? s.name : "?"; };
+  for (const r of S.rules){
+    const on = nb.has(pairKey(r.a, r.b));
+    if (r.t === "hard"  &&  on) out.push({lvl:"bad",  txt:`${nm(r.a)} und ${nm(r.b)} sitzen nebeneinander — Vorgabe verletzt`});
+    if (r.t === "nicht" &&  on) out.push({lvl:"warn", txt:`${nm(r.a)} neben ${nm(r.b)} — unerwünscht`});
+    if (r.t === "gern"  && !on) out.push({lvl:"warn", txt:`${nm(r.a)} und ${nm(r.b)} sitzen nicht zusammen`});
+  }
+  const noise = hasRole("noise"), front = hasRole("front");
+  for (const k in as){
+    const kid = kidById(as[k]), sc = SC[k]; if (!kid || !sc) continue;
+    if (noise && kid.f.ruhe  && sc.ruhe  < 0.34) out.push({lvl:"warn", txt:`${kid.name} braucht Ruhe, sitzt aber nah an Tür oder Waschbecken`});
+    if (front && kid.f.vorne && sc.vorne < 0.34) out.push({lvl:"warn", txt:`${kid.name} sitzt weit hinten`});
+  }
+  return out;
+}
+function hardSet(){ const m = new Map(); for (const r of S.rules) if (r.t === "hard") m.set(pairKey(r.a, r.b), true); return m; }
+function shuffle(a){ for (let i = a.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function build(seats, kids, hs){
+  const as = {}, free = shuffle(seats.map(s => s.key));
+  for (const kid of shuffle(kids.slice())){
+    let put = free.find(k => as[k] == null && !(as[partnerSeat(k)] != null && hs.has(pairKey(kid, as[partnerSeat(k)]))));
+    if (put == null) put = free.find(k => as[k] == null);
+    if (put != null) as[put] = kid;
+  }
+  return as;
+}
+function climb(as, seats, iter){
+  let best = score(as), cur = {...as};
+  const keys = seats.map(s => s.key);
+  for (let n = 0; n < iter; n++){
+    const a = keys[(Math.random() * keys.length) | 0], b = keys[(Math.random() * keys.length) | 0];
+    if (a === b) continue;
+    const t = {...cur}, x = t[a], y = t[b];
+    if (x == null && y == null) continue;
+    if (y == null) delete t[a]; else t[a] = y;
+    if (x == null) delete t[b]; else t[b] = x;
+    const sc = score(t);
+    if (sc > best){ best = sc; cur = t; }
+  }
+  return {as:cur, sc:best};
+}
+function generate(n){
+  SC = seatScores();
+  const seats = allSeats(), kids = S.students.map(s => s.id), hs = hardSet();
+  if (!kids.length || !seats.length) return [];
+  const res = [];
+  for (let i = 0; i < n * 3 && res.length < n; i++){
+    const r = climb(build(seats, kids, hs), seats, 2600);
+    const sig = Object.entries(r.as).sort().map(e => e.join("")).join(",");
+    if (res.some(x => x.sig === sig)) continue;
+    res.push({...r, sig, v:violations(r.as)});
+  }
+  return res.sort((a, b) => b.sc - a.sc);
+}
+
+/* =====================================================================
+   Zeichnen
+   ===================================================================== */
+const room = document.getElementById("room");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pctX = v => (v / S.room.w * 100) + "%";
+const pctY = v => (v / S.room.h * 100) + "%";
+const m1 = cm => (cm / 100).toLocaleString("de-DE", {minimumFractionDigits:1, maximumFractionDigits:1});
+
+function fitRoom(){
+  const stage = room.parentElement;
+  const availW = Math.max(260, Math.min(stage.clientWidth - 36, 920));
+  const availH = Math.max(380, window.innerHeight - 190);
+  const s = Math.min(availW / S.room.w, availH / S.room.h);
+  room.style.width  = Math.round(S.room.w * s) + "px";
+  room.style.height = Math.round(S.room.h * s) + "px";
+  const sx = 25 / S.room.w * 100, sy = 25 / S.room.h * 100;
+  const bx = 100 / S.room.w * 100, by = 100 / S.room.h * 100;
+  room.style.backgroundSize = `${sx}% ${sy}%, ${sx}% ${sy}%, ${bx}% ${by}%, ${bx}% ${by}%`;
+  document.getElementById("scale").innerHTML =
+    `<span><b>${esc(S.roomName)}</b> · ${m1(S.room.w)} × ${m1(S.room.h)} m</span><span>1 Kästchen = 25 cm · dicke Linie = 1 m</span>`;
+}
+const isSel = (k, id) => sel && sel.k === k && sel.id === id;
+
+function drawRoom(){
+  room.className = "roomwrap mode-" + mode;
+  room.innerHTML = "";
+  fitRoom();
+  const editing = mode === "raum";
+
+  for (const f of S.fixtures){
+    const def = FTYPES[f.type] || FTYPES.frei;
+    const e = document.createElement("div");
+    e.className = "fx t-" + f.type + (f.h > f.w * 1.4 ? " vert" : "") + (isSel("f", f.id) ? " sel" : "");
+    e.dataset.fid = f.id;
+    e.style.left = pctX(f.x); e.style.top = pctY(f.y);
+    e.style.width = pctX(f.w); e.style.height = pctY(f.h);
+    const lab = document.createElement("span");
+    lab.textContent = f.label || def.label;
+    e.appendChild(lab);
+    if (editing && isSel("f", f.id)){ const h = document.createElement("div"); h.className = "handle"; h.dataset.rs = "f"; e.appendChild(h); }
+    room.appendChild(e);
+  }
+
+  for (const t of S.tables){
+    const el = document.createElement("div");
+    el.className = "table " + (isPortrait(t) ? "P" : "L") + (isSel("t", t.id) ? " sel" : "");
+    el.dataset.tid = t.id;
+    el.style.left = pctX(t.cx - t.w/2); el.style.top = pctY(t.cy - t.h/2);
+    el.style.width = pctX(t.w); el.style.height = pctY(t.h);
+    for (const s of seatsOf(t)){
+      const sd = document.createElement("div");
+      sd.className = "seat"; sd.dataset.seat = s.key;
+      const kid = kidById(S.assign[s.key]);
+      if (kid) sd.textContent = kid.name; else { sd.classList.add("empty"); sd.textContent = "·"; }
+      el.appendChild(sd);
+    }
+    if (editing && isSel("t", t.id)){ const h = document.createElement("div"); h.className = "handle"; h.dataset.rs = "t"; el.appendChild(h); }
+    const n = document.createElement("div");
+    n.className = "tnum"; n.textContent = t.id;
+    n.style.left = pctX(t.cx - t.w/2); n.style.top = `calc(${pctY(t.cy - t.h/2)} - 12px)`;
+    room.appendChild(n);
+    room.appendChild(el);
+  }
+  markBad();
+}
+function markBad(){
+  const nb = neighbours(S.assign);
+  for (const r of S.rules){
+    if (r.t !== "hard" || !nb.has(pairKey(r.a, r.b))) continue;
+    for (const k in S.assign){
+      if (S.assign[k] === r.a || S.assign[k] === r.b){
+        const e = room.querySelector(`[data-seat="${k}"]`); if (e) e.classList.add("flag-bad");
+      }
+    }
+  }
+}
+function drawKids(){
+  const box = document.getElementById("kidlist");
+  document.getElementById("cnt").textContent = `${S.students.length} Kinder · ${allSeats().length} Plätze`;
+  if (!S.students.length){ box.innerHTML = '<div class="empty-note">Noch keine Namen. Liste oben einfügen.</div>'; return; }
+  const used = new Set(Object.values(S.assign));
+  box.innerHTML = S.students.map(k => `
+    <div class="kid${used.has(k.id) ? " placed" : ""}">
+      <span class="nm" data-kid="${k.id}">${esc(k.name)}</span>
+      <button class="chip" data-f="ruhe"  data-kid="${k.id}" aria-pressed="${!!k.f.ruhe}"  title="Braucht Ruhe">R</button>
+      <button class="chip" data-f="vorne" data-kid="${k.id}" aria-pressed="${!!k.f.vorne}" title="Weit vorne">V</button>
+      <button class="chip" data-f="blick" data-kid="${k.id}" aria-pressed="${!!k.f.blick}" title="Im Blickfeld">B</button>
+      <select class="gsel" data-g="${k.id}" aria-label="Geschlecht von ${esc(k.name)}">
+        <option value="-"${k.g === "-" ? " selected" : ""}>–</option>
+        <option value="m"${k.g === "m" ? " selected" : ""}>J</option>
+        <option value="w"${k.g === "w" ? " selected" : ""}>M</option>
+      </select>
+    </div>`).join("");
+}
+function drawRules(){
+  const box = document.getElementById("rulelist");
+  const nm = id => { const s = kidById(id); return s ? s.name : "?"; };
+  const lbl = {hard:"darf nicht neben", gern:"gern neben", nicht:"lieber nicht neben"};
+  box.innerHTML = S.rules.length
+    ? S.rules.map((r, i) => `<div class="rule ${r.t}"><span>${esc(nm(r.a))} <em>${lbl[r.t]}</em> ${esc(nm(r.b))}</span><button class="x" data-del="${i}" aria-label="Regel entfernen">×</button></div>`).join("")
+    : '<div class="empty-note">Noch keine Regeln.</div>';
+  for (const id of ["rA", "rB"]){
+    const s = document.getElementById(id), keep = s.value;
+    s.innerHTML = S.students.map(k => `<option value="${k.id}">${esc(k.name)}</option>`).join("");
+    if (keep) s.value = keep;
+  }
+}
+function drawProps(){
+  const box = document.getElementById("props");
+  if (!props.length){ box.innerHTML = '<div class="empty-note">Noch keine Vorschläge berechnet.</div>'; return; }
+  const max = Math.max(...props.map(p => p.sc)), min = Math.min(...props.map(p => p.sc));
+  box.innerHTML = props.map((p, i) => {
+    const bad = p.v.filter(v => v.lvl === "bad").length, warn = p.v.filter(v => v.lvl === "warn").length;
+    const pct = max === min ? 100 : Math.round((p.sc - min) / (max - min) * 100);
+    const list = p.v.slice(0, 4).map(v => `<li>${esc(v.txt)}</li>`).join("");
+    return `<div class="prop${i === 0 ? " best" : ""}">
+      <div class="top"><span class="score">${Math.round(p.sc)}</span><span class="lbl-u">Vorschlag ${i + 1}${i === 0 ? " · bester" : ""}</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="lbl-u">${bad ? `${bad} Vorgabe verletzt · ` : ""}${warn} Wünsche offen</div>
+      <ul>${list || "<li>Alle Regeln erfüllt.</li>"}</ul>
+      <button class="btn" data-take="${i}">Übernehmen</button></div>`;
+  }).join("");
+}
+function drawRoomPanel(){
+  document.getElementById("roomNameLbl").textContent = S.roomName;
+  document.getElementById("roomDirty").hidden = !S.roomDirty;
+  const rs = document.getElementById("roomSel"), keep = rs.value;
+  const own = Object.keys(S.rooms).sort((a, b) => a.localeCompare(b, "de"));
+  rs.innerHTML =
+    `<optgroup label="Vorlagen">${Object.keys(PRESETS).map(n => `<option value="p:${esc(n)}">${esc(n)}</option>`).join("")}</optgroup>` +
+    (own.length ? `<optgroup label="Eigene Räume">${own.map(n => `<option value="o:${esc(n)}">${esc(n)}</option>`).join("")}</optgroup>` : "");
+  if (keep && [...rs.options].some(o => o.value === keep)) rs.value = keep;
+  const w = document.getElementById("roomW"), h = document.getElementById("roomH");
+  if (document.activeElement !== w) w.value = (S.room.w / 100).toFixed(1);
+  if (document.activeElement !== h) h.value = (S.room.h / 100).toFixed(1);
+  drawSel();
+}
+function drawSel(){
+  const box = document.getElementById("selInfo");
+  if (!sel){ box.innerHTML = '<div class="empty-note">Nichts ausgewählt. Im Modus Raum einen Tisch oder ein Element antippen.</div>'; return; }
+  if (sel.k === "t"){
+    const t = S.tables.find(x => x.id === sel.id); if (!t){ sel = null; return drawSel(); }
+    box.innerHTML = `<div class="selbox">
+      <div class="t">Tisch ${t.id}</div>
+      <div class="note mono" style="margin:2px 0 10px">${Math.round(t.w)} × ${Math.round(t.h)} cm · 2 Plätze ${isPortrait(t) ? "übereinander" : "nebeneinander"}</div>
+      <div class="row"><button class="btn" id="selRot">Drehen</button><button class="btn danger" id="selDel">Löschen</button></div></div>`;
+  } else {
+    const f = S.fixtures.find(x => x.id === sel.id); if (!f){ sel = null; return drawSel(); }
+    const def = FTYPES[f.type] || FTYPES.frei;
+    box.innerHTML = `<div class="selbox">
+      <div class="t">${esc(def.label)}</div>
+      <div class="note mono" style="margin:2px 0 8px">${Math.round(f.w)} × ${Math.round(f.h)} cm${def.role === "noise" ? " · zählt als Geräuschquelle" : def.role === "front" ? " · zählt als vorne" : def.role === "teacher" ? " · zählt fürs Blickfeld" : ""}</div>
+      <input class="field" id="selLabel" placeholder="${esc(def.label)}" value="${esc(f.label || "")}" aria-label="Beschriftung">
+      <div class="row" style="margin-top:8px"><button class="btn" id="selRot">Drehen</button><button class="btn danger" id="selDel">Löschen</button></div></div>`;
+    document.getElementById("selLabel").oninput = e => { f.label = e.target.value.trim(); markRoomDirty(); drawRoom(); save(); };
+  }
+  document.getElementById("selRot").onclick = rotateSel;
+  document.getElementById("selDel").onclick = deleteSel;
+}
+function hint(){
+  document.getElementById("hint").innerHTML = mode === "plan"
+    ? '<span><b>Sitzplan:</b> Namen aus der Liste auf einen Platz ziehen. Platz auf Platz tauscht.</span><span>Rot umrandet = eine Vorgabe ist verletzt.</span>'
+    : '<span><b>Raum:</b> Tische und Elemente ziehen. Antippen wählt aus, blaue Ecke ändert die Größe.</span><span>Entf-Taste löscht das Ausgewählte.</span>';
+}
+function redraw(){
+  SC = seatScores();
+  drawRoom(); drawKids(); drawRules(); drawProps(); drawRoomPanel(); hint();
+  save();
+}
+window.addEventListener("resize", () => drawRoom());
+
+/* =====================================================================
+   Raum bearbeiten
+   ===================================================================== */
+function markRoomDirty(){ S.roomDirty = true; const d = document.getElementById("roomDirty"); if (d) d.hidden = false; }
+const snap = v => Math.round(v / SNAP) * SNAP;
+function clampTable(t){
+  t.cx = Math.max(t.w/2, Math.min(S.room.w - t.w/2, t.cx));
+  t.cy = Math.max(t.h/2, Math.min(S.room.h - t.h/2, t.cy));
+}
+function clampFix(f){
+  f.w = Math.min(f.w, S.room.w); f.h = Math.min(f.h, S.room.h);
+  f.x = Math.max(0, Math.min(S.room.w - f.w, f.x));
+  f.y = Math.max(0, Math.min(S.room.h - f.h, f.y));
+}
+function setMode(m){
+  mode = m;
+  if (m === "plan") sel = null;
+  document.getElementById("mPlan").setAttribute("aria-pressed", m === "plan");
+  document.getElementById("mRaum").setAttribute("aria-pressed", m === "raum");
+  drawRoom(); drawSel(); hint();
+}
+function addTable(){
+  const t = {id:S.nextId++, cx:snap(S.room.w/2), cy:snap(S.room.h/2), w:TABLE_DEFAULT.w, h:TABLE_DEFAULT.h};
+  S.tables.push(t); sel = {k:"t", id:t.id};
+  markRoomDirty(); setMode("raum"); redraw();
+}
+function addFixture(type){
+  const d = FTYPES[type];
+  const f = {id:S.nextFid++, type, x:snap((S.room.w - d.w)/2), y:snap((S.room.h - d.h)/2), w:d.w, h:d.h};
+  clampFix(f);
+  S.fixtures.push(f); sel = {k:"f", id:f.id};
+  markRoomDirty(); setMode("raum"); redraw();
+}
+function rotateSel(){
+  if (!sel) return;
+  if (sel.k === "t"){
+    const t = S.tables.find(x => x.id === sel.id); if (!t) return;
+    [t.w, t.h] = [t.h, t.w]; clampTable(t);
+  } else {
+    const f = S.fixtures.find(x => x.id === sel.id); if (!f) return;
+    const cx = f.x + f.w/2, cy = f.y + f.h/2;
+    [f.w, f.h] = [f.h, f.w];
+    f.x = cx - f.w/2; f.y = cy - f.h/2; clampFix(f);
+  }
+  markRoomDirty(); redraw();
+}
+function deleteSel(){
+  if (!sel) return;
+  if (sel.k === "t"){
+    const id = sel.id;
+    S.tables = S.tables.filter(t => t.id !== id);
+    for (const k of Object.keys(S.assign)) if (tableOfSeat(k) === id) delete S.assign[k];
+  } else {
+    S.fixtures = S.fixtures.filter(f => f.id !== sel.id);
+  }
+  sel = null; markRoomDirty(); props = []; redraw();
+}
+function loadRoom(value){
+  if (!value) return;
+  const [kind, ...rest] = value.split(":"); const name = rest.join(":");
+  const src = kind === "p" ? roomFromPreset(name) : clone(S.rooms[name]);
+  if (!src) return;
+  const hasPlan = Object.keys(S.assign).length > 0;
+  const msg = [];
+  if (S.roomDirty) msg.push("Die Änderungen am aktuellen Raum sind nicht gespeichert.");
+  if (hasPlan) msg.push("Die aktuelle Sitzordnung wird geleert.");
+  if (msg.length && !confirm(msg.join("\n") + `\n\n„${name}“ trotzdem laden?`)) return;
+  if (hasPlan) S.prev = [...neighbours(S.assign).keys()];
+  S.room = src.room; S.tables = src.tables; S.fixtures = src.fixtures;
+  S.roomName = name; S.roomDirty = false; S.assign = {}; props = []; sel = null;
+  S.nextId = maxId(S.tables) + 1; S.nextFid = maxId(S.fixtures) + 1;
+  redraw();
+}
+function saveRoom(){
+  const inp = document.getElementById("roomNameIn");
+  let name = inp.value.trim();
+  if (!name && !PRESETS[S.roomName]) name = S.roomName;
+  if (!name){ alert("Bitte einen Namen für den Raum eingeben."); inp.focus(); return; }
+  if (PRESETS[name]){ alert(`„${name}“ ist eine Vorlage. Bitte einen anderen Namen wählen.`); inp.focus(); return; }
+  if (S.rooms[name] && name !== S.roomName && !confirm(`Es gibt schon einen Raum „${name}“. Überschreiben?`)) return;
+  S.rooms[name] = {room:clone(S.room), tables:clone(S.tables), fixtures:clone(S.fixtures)};
+  S.roomName = name; S.roomDirty = false; inp.value = "";
+  redraw();
+  document.getElementById("roomSel").value = "o:" + name;
+}
+function deleteRoom(){
+  const v = document.getElementById("roomSel").value;
+  if (!v || !v.startsWith("o:")){ alert("Vorlagen lassen sich nicht löschen. Bitte einen eigenen Raum auswählen."); return; }
+  const name = v.slice(2);
+  if (!confirm(`Gespeicherten Raum „${name}“ löschen? Der gerade angezeigte Raum bleibt unverändert.`)) return;
+  delete S.rooms[name];
+  if (S.roomName === name) S.roomDirty = true;
+  redraw();
+}
+function resizeRoom(){
+  const w = Math.round(parseFloat(String(document.getElementById("roomW").value).replace(",", ".")) * 100);
+  const h = Math.round(parseFloat(String(document.getElementById("roomH").value).replace(",", ".")) * 100);
+  if (!(w >= 300 && w <= 2500 && h >= 300 && h <= 2500)){ alert("Bitte Breite und Tiefe zwischen 3 und 25 Metern angeben."); return; }
+  const scaleIt = document.getElementById("roomScale").checked;
+  if (scaleIt){
+    const kx = w / S.room.w, ky = h / S.room.h;
+    for (const t of S.tables){ t.cx *= kx; t.cy *= ky; t.w *= kx; t.h *= ky; }
+    for (const f of S.fixtures){ f.x *= kx; f.y *= ky; f.w *= kx; f.h *= ky; }
+  }
+  S.room = {w, h};
+  for (const t of S.tables) clampTable(t);
+  for (const f of S.fixtures) clampFix(f);
+  markRoomDirty(); redraw();
+}
+
+/* Palette */
+document.getElementById("palette").innerHTML =
+  `<button data-add="tisch"><i class="sw-tisch"></i>Tisch</button>` +
+  Object.entries(FTYPES).map(([k, d]) => `<button data-add="${k}"><i class="sw-${k}"></i>${esc(d.label)}</button>`).join("");
+document.getElementById("palette").onclick = e => {
+  const b = e.target.closest("[data-add]"); if (!b) return;
+  b.dataset.add === "tisch" ? addTable() : addFixture(b.dataset.add);
+};
+document.getElementById("btnRoomLoad").onclick = () => loadRoom(document.getElementById("roomSel").value);
+document.getElementById("btnRoomSave").onclick = saveRoom;
+document.getElementById("btnRoomDel").onclick = deleteRoom;
+document.getElementById("btnRoomSize").onclick = resizeRoom;
+
+/* =====================================================================
+   Ziehen — Kinder, Tische, Elemente, Größe
+   ===================================================================== */
+const ghost = document.getElementById("ghost");
+function roomPoint(e){
+  const r = room.getBoundingClientRect();
+  return {x:(e.clientX - r.left) / r.width * S.room.w, y:(e.clientY - r.top) / r.height * S.room.h};
+}
+function seatAt(x, y){ const el = document.elementFromPoint(x, y); return el && el.classList.contains("seat") ? el : null; }
+function moveGhost(e){ ghost.style.left = (e.clientX + 12) + "px"; ghost.style.top = (e.clientY - 10) + "px"; }
+
+document.addEventListener("pointerdown", e => {
+  if (mode === "raum"){
+    const h = e.target.closest(".handle");
+    const fx = e.target.closest(".fx");
+    const tb = e.target.closest(".table");
+    const p = roomPoint(e);
+    if (h){
+      if (h.dataset.rs === "f") drag = {kind:"rsF", f:S.fixtures.find(x => x.id === sel.id)};
+      else drag = {kind:"rsT", t:S.tables.find(x => x.id === sel.id)};
+      e.preventDefault(); return;
+    }
+    if (tb){
+      const t = S.tables.find(x => x.id == tb.dataset.tid); if (!t) return;
+      sel = {k:"t", id:t.id};
+      drag = {kind:"mvT", t, dx:p.x - t.cx, dy:p.y - t.cy, moved:false};
+      drawRoom(); drawSel(); e.preventDefault(); return;
+    }
+    if (fx){
+      const f = S.fixtures.find(x => x.id == fx.dataset.fid); if (!f) return;
+      sel = {k:"f", id:f.id};
+      drag = {kind:"mvF", f, dx:p.x - f.x, dy:p.y - f.y, moved:false};
+      drawRoom(); drawSel(); e.preventDefault(); return;
+    }
+    if (e.target === room){ sel = null; drawRoom(); drawSel(); }
+    return;
+  }
+  const nm = e.target.closest(".nm"), seat = e.target.closest(".seat");
+  if (nm){
+    drag = {kind:"kid", id:+nm.dataset.kid};
+    ghost.textContent = nm.textContent; ghost.style.display = "block"; moveGhost(e);
+    e.preventDefault(); return;
+  }
+  if (seat && S.assign[seat.dataset.seat] != null){
+    drag = {kind:"kid", id:S.assign[seat.dataset.seat], from:seat.dataset.seat};
+    ghost.textContent = seat.textContent; ghost.style.display = "block"; moveGhost(e);
+    e.preventDefault();
+  }
+});
+document.addEventListener("pointermove", e => {
+  if (!drag) return;
+  if (drag.kind === "kid"){
+    moveGhost(e);
+    room.querySelectorAll(".seat.over").forEach(s => s.classList.remove("over"));
+    const s = seatAt(e.clientX, e.clientY); if (s) s.classList.add("over");
+    return;
+  }
+  const p = roomPoint(e);
+  if (drag.kind === "mvT"){
+    const t = drag.t; t.cx = snap(p.x - drag.dx); t.cy = snap(p.y - drag.dy); clampTable(t);
+  } else if (drag.kind === "mvF"){
+    const f = drag.f; f.x = snap(p.x - drag.dx); f.y = snap(p.y - drag.dy); clampFix(f);
+  } else if (drag.kind === "rsF"){
+    const f = drag.f;
+    f.w = Math.max(MIN_SIZE, Math.min(S.room.w - f.x, snap(p.x - f.x)));
+    f.h = Math.max(MIN_SIZE, Math.min(S.room.h - f.y, snap(p.y - f.y)));
+  } else if (drag.kind === "rsT"){
+    const t = drag.t, left = t.cx - t.w/2, top = t.cy - t.h/2;
+    t.w = Math.max(30, Math.min(S.room.w - left, snap(p.x - left)));
+    t.h = Math.max(30, Math.min(S.room.h - top,  snap(p.y - top)));
+    t.cx = left + t.w/2; t.cy = top + t.h/2;
+  }
+  drag.moved = true;
+  drawRoom();
+});
+document.addEventListener("pointerup", e => {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.kind === "kid"){
+    ghost.style.display = "none";
+    room.querySelectorAll(".seat.over").forEach(s => s.classList.remove("over"));
+    const s = seatAt(e.clientX, e.clientY);
+    if (s){
+      const to = s.dataset.seat, occ = S.assign[to];
+      if (d.from){ if (occ != null) S.assign[d.from] = occ; else delete S.assign[d.from]; }
+      else { for (const k in S.assign) if (S.assign[k] === d.id) delete S.assign[k]; }
+      S.assign[to] = d.id;
+    }
+    redraw(); return;
+  }
+  if (d.moved !== false){ markRoomDirty(); redraw(); }
+});
+document.addEventListener("keydown", e => {
+  if (mode !== "raum" || !sel) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  if (e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); deleteSel(); }
+  if (e.key === "r" || e.key === "R"){ rotateSel(); }
+});
+
+/* =====================================================================
+   Bedienung
+   ===================================================================== */
+document.getElementById("mPlan").onclick = () => setMode("plan");
+document.getElementById("mRaum").onclick = () => setMode("raum");
+document.getElementById("btnLeeren").onclick = () => { S.prev = [...neighbours(S.assign).keys()]; S.assign = {}; props = []; redraw(); };
+document.getElementById("btnPrint").onclick = () => { setMode("plan"); window.print(); };
+function runAuto(){
+  props = generate(5);
+  document.querySelector('[data-tab="vorschlaege"]').click();
+  drawProps();
+  if (!props.length) alert("Bitte zuerst Namen eintragen und mindestens einen Tisch aufstellen.");
+}
+document.getElementById("btnAuto").onclick = runAuto;
+document.getElementById("btnAuto2").onclick = runAuto;
+
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b));
+  document.querySelectorAll(".tabpane").forEach(p => p.classList.toggle("on", p.id === "tab-" + b.dataset.tab));
+});
+document.getElementById("btnNamen").onclick = () => {
+  const lines = document.getElementById("paste").value.split(/[\n,;\t]/).map(s => s.trim()).filter(Boolean);
+  if (!lines.length) return;
+  if (S.students.length && S.students.every(s => /^Beispiel /.test(s.name))){ S.students = []; S.assign = {}; S.rules = []; props = []; }
+  for (const n of lines) S.students.push({id:S.nextSid++, name:n, f:{}, g:"-"});
+  document.getElementById("paste").value = ""; redraw();
+};
+document.getElementById("btnDemo").onclick = () => {
+  if (S.students.length && !S.students.every(s => /^Beispiel /.test(s.name)) &&
+      !confirm("Die eingetragenen Namen, Regeln und die Sitzordnung werden durch Platzhalter ersetzt. Fortfahren?")) return;
+  S.students = DEMO.map(n => ({id:S.nextSid++, name:n, f:{}, g:"-"}));
+  S.assign = {}; S.rules = []; props = []; redraw();
+};
+document.addEventListener("click", e => {
+  const chip = e.target.closest(".chip[data-f]");
+  if (chip){ const k = kidById(+chip.dataset.kid); k.f[chip.dataset.f] = !k.f[chip.dataset.f]; redraw(); return; }
+  const del = e.target.closest("[data-del]");
+  if (del){ S.rules.splice(+del.dataset.del, 1); redraw(); return; }
+  const take = e.target.closest("[data-take]");
+  if (take){ S.assign = {...props[+take.dataset.take].as}; redraw(); }
+});
+document.addEventListener("change", e => {
+  const g = e.target.closest("[data-g]");
+  if (g){ kidById(+g.dataset.g).g = g.value; save(); }
+});
+document.getElementById("btnRegel").onclick = () => {
+  const a = +document.getElementById("rA").value, b = +document.getElementById("rB").value, t = document.getElementById("rT").value;
+  if (!a || !b || a === b) return;
+  if (S.rules.some(r => r.t === t && pairKey(r.a, r.b) === pairKey(a, b))) return;
+  S.rules.push({a, b, t}); redraw();
+};
+document.getElementById("mix").onchange = e => { S.mix = e.target.value; save(); };
+
+/* Regeln als Text */
+const nrm = s => String(s).trim().toLowerCase().replace(/\s+/g, " ");
+const KEYMAP = {ruhe:"ruhe", vorne:"vorne", blick:"blick", blickfeld:"blick",
+  nicht:"hard", vorgabe:"hard", gern:"gern", ungern:"nicht",
+  junge:"m", jungen:"m", "mädchen":"w", maedchen:"w"};
+function parseRules(txt){
+  const idx = new Map(S.students.map(s => [nrm(s.name), s.id]));
+  const unknown = new Set(), flags = {}, rules = [], gend = {};
+  let used = 0;
+  for (const raw of txt.split(/\r?\n/)){
+    const line = raw.split("#")[0].trim(); if (!line) continue;
+    const m = line.match(/^([^:]+):\s*(.+)$/); if (!m) continue;
+    const key = KEYMAP[nrm(m[1])]; if (!key) continue;
+    const find = n => { const t = n.trim(); if (!t) return null; const id = idx.get(nrm(t)); if (id == null) unknown.add(t); return id; };
+    if (key === "ruhe" || key === "vorne" || key === "blick"){
+      for (const n of m[2].split(/[,;]/)){ const id = find(n); if (id != null){ (flags[id] = flags[id] || {})[key] = true; used++; } }
+    } else if (key === "m" || key === "w"){
+      for (const n of m[2].split(/[,;]/)){ const id = find(n); if (id != null){ gend[id] = key; used++; } }
+    } else {
+      for (const pair of m[2].split(";")){
+        const parts = pair.split(/[|+&]/).map(x => x.trim()).filter(Boolean);
+        for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++){
+          const a = find(parts[i]), b = find(parts[j]);
+          if (a != null && b != null && a !== b){ rules.push({a, b, t:key}); used++; }
+        }
+      }
+    }
+  }
+  return {flags, rules, gend, unknown:[...unknown], used};
+}
+document.getElementById("btnRIn").onclick = () => {
+  const rep = document.getElementById("rreport");
+  if (!S.students.length){ rep.innerHTML = '<div class="rule nicht">Bitte zuerst die Namen der Klasse übernehmen.</div>'; return; }
+  const r = parseRules(document.getElementById("rtext").value);
+  if (!r.used && !r.unknown.length){ rep.innerHTML = '<div class="rule nicht">Im Text war keine erkennbare Regel.</div>'; return; }
+  for (const s of S.students) s.f = {};
+  S.rules = [];
+  for (const id in r.flags){ const s = kidById(+id); if (s) s.f = r.flags[id]; }
+  for (const id in r.gend){ const s = kidById(+id); if (s) s.g = r.gend[id]; }
+  const seen = new Set();
+  for (const x of r.rules){ const k = x.t + pairKey(x.a, x.b); if (!seen.has(k)){ seen.add(k); S.rules.push(x); } }
+  props = []; redraw();
+  rep.innerHTML = `<div class="rule gern">${S.rules.length} Regeln und ${Object.keys(r.flags).length} Bedürfnisse übernommen.</div>`
+    + (r.unknown.length ? `<div class="rule nicht">Nicht zugeordnet: ${esc(r.unknown.join(", "))} — Schreibweise mit der Namensliste abgleichen.</div>` : "");
+};
+document.getElementById("btnROut").onclick = () => {
+  const nm = id => { const s = kidById(id); return s ? s.name : "?"; };
+  const pick = f => S.students.filter(s => s.f && s.f[f]).map(s => s.name);
+  const pairs = t => S.rules.filter(r => r.t === t).map(r => `${nm(r.a)} | ${nm(r.b)}`).join("; ");
+  const gen = g => S.students.filter(s => s.g === g).map(s => s.name);
+  const L = ["# Regeln — aus der Sitzplan-Werkstatt"];
+  const add = (k, v) => { if (v && v.length) L.push(`${k}: ${Array.isArray(v) ? v.join(", ") : v}`); };
+  add("Ruhe", pick("ruhe")); add("Vorne", pick("vorne")); add("Blick", pick("blick"));
+  add("Nicht", pairs("hard")); add("Gern", pairs("gern")); add("Ungern", pairs("nicht"));
+  add("Junge", gen("m")); add("Mädchen", gen("w"));
+  document.getElementById("rtext").value = L.join("\n");
+};
+
+/* Sichern: Text und Datei */
+document.getElementById("btnExport").onclick = () => { document.getElementById("dump").value = JSON.stringify(S); };
+document.getElementById("btnCopy").onclick = async () => {
+  const d = document.getElementById("dump"); if (!d.value) d.value = JSON.stringify(S);
+  try { await navigator.clipboard.writeText(d.value); } catch(e){ d.select(); }
+};
+document.getElementById("btnImport").onclick = () => {
+  try {
+    if (!adopt(JSON.parse(document.getElementById("dump").value))) alert("Im Text steht kein gültiger Sitzplan.");
+  } catch(e){ alert("Der Text lässt sich nicht lesen. Bitte den vollständigen gesicherten Stand einfügen."); }
+};
+document.getElementById("btnFileSave").onclick = () => {
+  const blob = new Blob([JSON.stringify(S, null, 1)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "sitzplan-" + new Date().toISOString().slice(0, 10) + ".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+};
+document.getElementById("fileOpen").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { if (!adopt(JSON.parse(await f.text()))) alert("Diese Datei enthält keinen Sitzplan."); }
+  catch(err){ alert("Die Datei lässt sich nicht lesen."); }
+  e.target.value = "";
+};
+
+/* =====================================================================
+   OneDrive
+   EINRICHTUNG: Nach der Registrierung bei Microsoft die Anwendungs-ID
+   hier eintragen. Schritt-für-Schritt-Anleitung: README.md
+   ===================================================================== */
+const CONFIG = {
+  clientId: "",                                                     // Anwendungs-ID (Client-ID)
+  authority: "https://login.microsoftonline.com/organizations",     // oder .../<Mandanten-ID der Schule>
+  file: "sitzplan.json"                                             // Dateiname im App-Ordner
+};
+const SCOPES = ["Files.ReadWrite.AppFolder"];
+const GRAPH = "https://graph.microsoft.com/v1.0/me/drive/special/approot:/";
+let msalApp = null, account = null, cloudTimer = null, cloudBusy = false, cloudAgain = false;
+
+function odStatus(text, kind){ const el = document.getElementById("odStatus"); el.textContent = text; el.dataset.kind = kind || "off"; }
+function odButton(signedIn){ document.getElementById("btnOD").textContent = signedIn ? "Abmelden" : "Mit OneDrive verbinden"; }
+async function odToken(){
+  try { return (await msalApp.acquireTokenSilent({scopes:SCOPES, account})).accessToken; }
+  catch(e){ return (await msalApp.acquireTokenPopup({scopes:SCOPES, account})).accessToken; }
+}
+const odUrl = () => GRAPH + encodeURIComponent(CONFIG.file) + ":/content";
+async function cloudLoad(){
+  const t = await odToken();
+  const res = await fetch(odUrl(), {headers:{Authorization:"Bearer " + t}});
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Status " + res.status);
+  return await res.json();
+}
+async function cloudSave(){
+  if (!account) return;
+  if (cloudBusy){ cloudAgain = true; return; }
+  cloudBusy = true; odStatus("Speichert …", "busy");
+  try {
+    const t = await odToken();
+    const res = await fetch(odUrl(), {method:"PUT", headers:{Authorization:"Bearer " + t, "Content-Type":"application/json"}, body:JSON.stringify(S)});
+    if (!res.ok) throw new Error("Status " + res.status);
+    odStatus("In OneDrive gesichert · " + new Date().toLocaleTimeString("de-DE", {hour:"2-digit", minute:"2-digit"}), "ok");
+  } catch(e){
+    odStatus("OneDrive nicht erreicht — nur lokal gesichert", "bad");
+  } finally {
+    cloudBusy = false;
+    if (cloudAgain){ cloudAgain = false; scheduleCloud(); }
+  }
+}
+function scheduleCloud(){ if (!account) return; clearTimeout(cloudTimer); cloudTimer = setTimeout(cloudSave, 1500); }
+const isPlaceholderState = () => !S.students.length || S.students.every(s => /^Beispiel /.test(s.name));
+async function afterLogin(interactive){
+  odButton(true); odStatus("Verbunden · lädt …", "busy");
+  try {
+    const data = await cloudLoad();
+    if (data && migrate(data)){
+      const takeCloud = isPlaceholderState() || !interactive ||
+        confirm("In Ihrem OneDrive liegt bereits ein gespeicherter Sitzplan.\n\nOK — diesen Stand laden.\nAbbrechen — den Stand aus diesem Browser behalten und damit OneDrive überschreiben.");
+      if (takeCloud){ S = data; props = []; applyState(); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} odStatus("Mit OneDrive verbunden", "ok"); }
+      else await cloudSave();
+    } else {
+      await cloudSave();
+    }
+  } catch(e){
+    odStatus("OneDrive nicht erreichbar (" + e.message + ")", "bad");
+  }
+}
+async function odInit(){
+  const btn = document.getElementById("btnOD");
+  if (!CONFIG.clientId){ odStatus("OneDrive noch nicht eingerichtet", "off"); btn.hidden = true; return; }
+  if (typeof msal === "undefined"){ odStatus("Anmeldedienst nicht geladen — nur lokal", "bad"); btn.hidden = true; return; }
+  try {
+    msalApp = new msal.PublicClientApplication({
+      auth:{clientId:CONFIG.clientId, authority:CONFIG.authority, redirectUri:new URL("redirect.html", location.href).href},
+      cache:{cacheLocation:"localStorage"}
+    });
+    await msalApp.initialize();
+    const accs = msalApp.getAllAccounts();
+    if (accs.length){ account = accs[0]; msalApp.setActiveAccount(account); await afterLogin(false); }
+    else { odStatus("Nicht mit OneDrive verbunden", "off"); odButton(false); }
+  } catch(e){
+    odStatus("Anmeldung nicht verfügbar — nur lokal", "bad"); btn.hidden = true;
+  }
+}
+document.getElementById("btnOD").onclick = async () => {
+  if (!msalApp) return;
+  if (account){
+    clearTimeout(cloudTimer);
+    const acc = account; account = null;
+    await msalApp.logoutPopup({account:acc}).catch(() => {});
+    odStatus("Nicht mit OneDrive verbunden", "off"); odButton(false);
+    return;
+  }
+  try {
+    const r = await msalApp.loginPopup({scopes:SCOPES, prompt:"select_account"});
+    account = r.account; msalApp.setActiveAccount(account);
+    await afterLogin(true);
+  } catch(e){
+    odStatus(/popup/i.test(String((e && e.errorCode) || e))
+      ? "Pop-up wurde blockiert — bitte Pop-ups für diese Seite erlauben"
+      : "Anmeldung abgebrochen", "off");
+  }
+};
+
+/* =====================================================================
+   Start
+   ===================================================================== */
+load();
+if (!S.students.length){ S.students = DEMO.map(n => ({id:S.nextSid++, name:n, f:{}, g:"-"})); }
+applyState();
+odInit();
+</script>
+</body>
+</html>
