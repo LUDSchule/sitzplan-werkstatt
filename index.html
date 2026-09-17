@@ -84,6 +84,12 @@ header .sub{font-size:12px; color:var(--ink-3)}
 .seg{display:inline-flex; border:1px solid var(--line-2); border-radius:var(--r); overflow:hidden}
 .seg button{border:0; background:transparent; padding:7px 13px; cursor:pointer; font-size:13px; color:var(--ink-2)}
 .seg button[aria-pressed="true"]{background:var(--navy); color:#fff}
+.seg button:disabled{color:var(--line-2); cursor:default}
+.saved{border:1px solid var(--line-2); border-radius:var(--r); padding:8px 10px; margin-bottom:7px}
+.saved.ok{border-color:var(--good)}
+.saved .nm{font-weight:600}
+.saved .meta{font-size:11.5px; color:var(--ink-3); margin:1px 0 5px}
+.saved .st{font-size:12px; color:var(--ink-2); margin-bottom:6px}
 .od{border:0; cursor:pointer; font-size:12px; padding:4px 10px; border-radius:20px; background:var(--sunk); color:var(--ink-3); white-space:nowrap}
 .od[data-kind="ok"]{background:var(--good-soft); color:var(--good)}
 .od[data-kind="busy"]{background:var(--blue-soft); color:var(--blue)}
@@ -277,6 +283,10 @@ label.lbl{font-size:12px; color:var(--ink-2)}
   </div>
   <button class="btn" id="btnLeeren">Plätze leeren</button>
   <button class="btn primary" id="btnAuto">Vorschläge erzeugen</button>
+  <div class="seg" role="group" aria-label="Verlauf">
+    <button id="btnUndo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig" disabled>↶</button>
+    <button id="btnRedo" title="Wiederholen (Strg+Y)" aria-label="Wiederholen" disabled>↷</button>
+  </div>
   <button class="btn ghost" id="btnPrint">Drucken</button>
 </header>
 
@@ -369,7 +379,14 @@ Mädchen: Anna, Carla"></textarea>
       <h2>Automatische Vorschläge</h2>
       <p class="note">Die Werkstatt rechnet mehrere Sitzordnungen durch und bewertet sie nach Vorgaben, Wünschen und Bedürfnissen. Ruhe, Nähe zur Tafel und Blickfeld ergeben sich aus der Lage von Tür, Waschbecken, Tafel und Pult im Raum.</p>
       <div class="row"><button class="btn primary" id="btnAuto2">5 Vorschläge erzeugen</button></div>
-      <div id="props" style="margin-top:12px"></div>
+      <div class="divider"></div>
+      <h2>Gemerkte Pläne</h2>
+      <p class="note">Bleiben erhalten, auch wenn neue Vorschläge berechnet werden. Das Häkchen zeigt, ob der Plan mit den aktuellen Regeln noch alles erfüllt.</p>
+      <div id="saved"></div>
+      <div class="row" style="margin-top:6px"><button class="btn" id="btnSaveCur">Aktuellen Sitzplan merken</button></div>
+      <div class="divider"></div>
+      <h2>Neue Vorschläge</h2>
+      <div id="props" style="margin-top:8px"></div>
       <div class="divider"></div>
       <h2>Wünsche im aktuellen Sitzplan</h2>
       <p class="note">Sitznachbarn sind der Platz am selben Tisch und die anstoßenden Plätze an angedockten Tischen — direkt daneben oder über Eck. Oben stehen die Kinder, die noch neben keinem Wunschkind sitzen.</p>
@@ -569,6 +586,7 @@ function migrate(o){
   if (!o.roomName) o.roomName = "Eigener Raum";
   o.roomDirty = !!o.roomDirty;
   o.rules = o.rules || []; o.assign = o.assign || {}; o.prev = o.prev || []; o.mix = o.mix || "aus";
+  if (!Array.isArray(o.saved)) o.saved = [];
   o.nextId  = Math.max(o.nextId  || 0, maxId(o.tables) + 1);
   o.nextFid = Math.max(o.nextFid || 0, maxId(o.fixtures) + 1);
   o.nextSid = Math.max(o.nextSid || 0, maxId(o.students) + 1);
@@ -582,7 +600,40 @@ const KEY = "sitzplan-werkstatt.v2";
 let suppressSync = false;
 function save(){
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+  histPush();
   if (!suppressSync) syncChanged();
+}
+/* Rückgängig / Wiederholen: Schnappschüsse des Zustands, nur für die offene Seite */
+const HIST = {stack:[], pos:-1, lock:false, last:0, max:100};
+function histPush(){
+  if (HIST.lock) return;
+  const j = JSON.stringify(S);
+  if (HIST.stack[HIST.pos] === j) return;
+  const now = Date.now();
+  const typing = /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || "");
+  HIST.stack.length = HIST.pos + 1;                 // wiederholbare Schritte verwerfen
+  if (typing && HIST.pos > 0 && now - HIST.last < 1500) HIST.stack[HIST.pos] = j;   // Tippen zusammenfassen
+  else { HIST.stack.push(j); HIST.pos++; }
+  if (HIST.stack.length > HIST.max){ HIST.stack.shift(); HIST.pos--; }
+  HIST.last = now;
+  histButtons();
+}
+function histButtons(){
+  const u = document.getElementById("btnUndo"), r = document.getElementById("btnRedo");
+  if (!u) return;
+  u.disabled = HIST.pos <= 0;
+  r.disabled = HIST.pos >= HIST.stack.length - 1;
+}
+function histGo(d){
+  const to = HIST.pos + d;
+  if (to < 0 || to >= HIST.stack.length) return;
+  HIST.pos = to;
+  const o = migrate(JSON.parse(HIST.stack[to]));
+  if (!o) return;
+  HIST.lock = true;
+  try { S = o; applyState(); save(); }
+  finally { HIST.lock = false; }
+  histButtons();
 }
 function load(){
   try {
@@ -1016,9 +1067,10 @@ function isPerfect(p){
   const empty = S.tables.filter(t => p.as[t.id + ":0"] == null && p.as[t.id + ":1"] == null).length;
   return empty <= Math.max(0, free - S.tables.length);
 }
+const sigOf = as => Object.entries(as).sort().map(e => e.join("")).join(",");
 function oneRun(seats, kids, hs, fx){
   const r = anneal(build(seats, kids, hs, fx), seats, 20000, fx);
-  const p = {...r, sig:Object.entries(r.as).sort().map(e => e.join("")).join(","), v:violations(r.as), ws:wishStats(r.as), ns:needStats(r.as)};
+  const p = {...r, sig:sigOf(r.as), v:violations(r.as), ws:wishStats(r.as), ns:needStats(r.as)};
   p.perfect = isPerfect(p);
   return p;
 }
@@ -1238,7 +1290,7 @@ function drawProps(){
       ${nsTxt ? `${nsAll ? '<span style="color:var(--good)">✓</span>' : '<span style="color:var(--bad)">✗</span>'} Bedürfnisse: ${nsTxt}<br>` : ""}
       ${p.ws.total ? `${allWish ? '<span style="color:var(--good)">✓</span>' : "·"} <b>${p.ws.ok} von ${p.ws.total}</b> Kindern neben mindestens einem Wunschkind${p.ws.more ? ` · <b>${p.ws.more}</b> neben mehreren` : ""}` : ""}${isl ? `<br>${isl.length ? `· ${isl.length} Kind${isl.length > 1 ? "er" : ""} nur neben dem anderen Geschlecht` : '<span style="color:var(--good)">✓</span> Niemand nur neben dem anderen Geschlecht'}` : ""}</div>
       <ul>${list || "<li>Keine offenen Punkte.</li>"}</ul>
-      <button class="btn" data-take="${i}">Übernehmen</button> <span class="note">danach unten jedes Kind im Einzelnen</span></div>`;
+      <div class="row"><button class="btn" data-take="${i}">Übernehmen</button>${S.saved.some(s => sigOf(s.as) === p.sig) ? '<button class="btn" disabled>Gemerkt</button>' : `<button class="btn" data-keep="${i}">Merken</button>`}</div></div>`;
   }).join("");
 }
 function drawRoomPanel(){
@@ -1322,9 +1374,42 @@ function drawWishes(){
   }).join("");
   box.innerHTML = (ws.total ? `<div class="wsum"><b>${ws.ok} von ${ws.total}</b> Kindern sitzen neben mindestens einem Wunschkind${ws.more ? `, <b>${ws.more}</b> neben mehreren` : ""}.</div>` : "") + html;
 }
+// nur Plätze und Kinder übernehmen, die es noch gibt
+function usableAssign(as){
+  const out = {};
+  for (const k in as) if (SEATPOS[k] && kidById(as[k])) out[k] = as[k];
+  return out;
+}
+function keepPlan(as, name){
+  const d = new Date();
+  const id = S.saved.reduce((m, p) => Math.max(m, p.id), 0) + 1;
+  S.saved.push({id, name: name || `Plan ${id}`, at: d.toISOString(), room: S.roomName, as: {...as}});
+  redraw();
+}
+function drawSaved(){
+  const box = document.getElementById("saved");
+  if (!S.saved.length){ box.innerHTML = '<div class="empty-note">Noch nichts gemerkt. Bei einem Vorschlag auf <b>Merken</b> klicken.</div>'; return; }
+  box.innerHTML = S.saved.map(p => {
+    const missing = Object.keys(p.as).filter(k => !SEATPOS[k] || !kidById(p.as[k])).length;
+    const as = usableAssign(p.as);
+    const q = {as, v:violations(as), ws:wishStats(as), ns:needStats(as)};
+    const ok = !missing && isPerfect(q);
+    const bad = q.v.filter(v => v.lvl === "bad").length;
+    const when = new Date(p.at).toLocaleString("de-DE", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"});
+    const st = missing ? `<span style="color:var(--warn)">${missing} Plätze passen nicht mehr zum Raum oder zur Namensliste</span>`
+      : ok ? '<span style="color:var(--good)">✓ erfüllt alles</span>'
+      : `${bad ? `<span style="color:var(--bad)">✗ ${bad} Vorgabe/Bedürfnis offen</span> · ` : ""}${q.ws.ok} von ${q.ws.total} neben einem Wunschkind`;
+    return `<div class="saved${ok ? " ok" : ""}">
+      <div class="nm">${esc(p.name)}</div>
+      <div class="meta">${when} · ${esc(p.room || "")}${p.room && p.room !== S.roomName ? " (anderer Raum als der aktuelle)" : ""}</div>
+      <div class="st">${st}</div>
+      <div class="row"><button class="btn" data-saved="${p.id}" data-act="take">Übernehmen</button><button class="btn ghost" data-saved="${p.id}" data-act="ren">Umbenennen</button><button class="btn ghost danger" data-saved="${p.id}" data-act="del">Löschen</button></div>
+    </div>`;
+  }).join("");
+}
 function redraw(){
   prepare();
-  drawRoom(); drawKids(); drawRules(); drawProps(); drawRoomPanel(); drawWishes(); hint();
+  drawRoom(); drawKids(); drawRules(); drawProps(); drawSaved(); drawRoomPanel(); drawWishes(); hint();
   save();
 }
 window.addEventListener("resize", () => drawRoom());
@@ -1552,6 +1637,12 @@ document.addEventListener("pointerup", e => {
   if (d.moved !== false){ markRoomDirty(); redraw(); }
 });
 document.addEventListener("keydown", e => {
+  const inField = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !inField){
+    const k = e.key.toLowerCase();
+    if (k === "z" && !e.shiftKey){ e.preventDefault(); histGo(-1); return; }
+    if (k === "y" || (k === "z" && e.shiftKey)){ e.preventDefault(); histGo(1); return; }
+  }
   if (mode !== "raum" || !sel) return;
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
   if (e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); deleteSel(); }
@@ -1623,7 +1714,17 @@ document.addEventListener("click", e => {
   const del = e.target.closest("[data-del]");
   if (del){ S.rules.splice(+del.dataset.del, 1); redraw(); return; }
   const take = e.target.closest("[data-take]");
-  if (take){ S.assign = {...props[+take.dataset.take].as}; redraw(); }
+  if (take){ S.assign = {...props[+take.dataset.take].as}; redraw(); return; }
+  const keep = e.target.closest("[data-keep]");
+  if (keep){ keepPlan(props[+keep.dataset.keep].as); return; }
+  const sv = e.target.closest("[data-saved]");
+  if (sv){
+    const i = S.saved.findIndex(p => p.id === +sv.dataset.saved); if (i < 0) return;
+    const p = S.saved[i], act = sv.dataset.act;
+    if (act === "take"){ S.assign = usableAssign(p.as); redraw(); }
+    if (act === "ren"){ const n = prompt("Name für den Plan:", p.name); if (n && n.trim()){ p.name = n.trim(); redraw(); } }
+    if (act === "del" && confirm(`„${p.name}“ aus den gemerkten Plänen löschen?`)){ S.saved.splice(i, 1); redraw(); }
+  }
 });
 document.addEventListener("change", e => {
   const g = e.target.closest("[data-g]");
@@ -1995,6 +2096,13 @@ restoreSync();
 if (!S.students.length){ S.students = DEMO.map(n => ({id:S.nextSid++, name:n, f:{}, g:"-"})); }
 applyState();
 if (AUTO) initAuto(); else renderSync();
+document.getElementById("btnUndo").onclick = () => histGo(-1);
+document.getElementById("btnRedo").onclick = () => histGo(1);
+document.getElementById("btnSaveCur").onclick = () => {
+  if (!Object.keys(S.assign).length){ alert("Es ist noch niemand auf einen Platz gesetzt."); return; }
+  const n = prompt("Name für den Plan:", `Plan ${S.saved.reduce((m, p) => Math.max(m, p.id), 0) + 1}`);
+  if (n !== null) keepPlan(S.assign, n.trim() || undefined);
+};
 </script>
 </body>
 </html>

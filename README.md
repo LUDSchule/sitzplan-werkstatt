@@ -78,3 +78,7 @@ Mädchen: Carla, Hana
 ## Vorschläge
 
 **Vorschläge erzeugen** rechnet so lange, bis fünf Pläne alles erfüllen — höchstens 90 Sekunden, ein zweiter Klick auf **Stopp** hält früher an. Oben stehen die Pläne, die alles erfüllen (Vorgaben, Bedürfnisse, jedes Kind mit Wunsch neben einem Wunschkind, Mischung, kein vermeidbarer leerer Tisch), darunter die besten übrigen mit ihren offenen Punkten.
+
+**Merken:** Jeder Vorschlag lässt sich mit **Merken** in die Liste *Gemerkte Pläne* übernehmen, ebenso der aktuelle Sitzplan. Gemerkte Pläne bleiben bei neuen Berechnungen erhalten, werden mit gespeichert und lassen sich übernehmen, umbenennen und löschen. Ein Häkchen zeigt, ob ein Plan mit den aktuellen Regeln noch alles erfüllt.
+
+**Rückgängig / Wiederholen:** ↶ und ↷ oben oder Strg+Z und Strg+Y (Strg+Umschalt+Z). Die letzten 100 Schritte, solange die Seite offen ist.
